@@ -11,6 +11,7 @@
   <img src="https://img.shields.io/badge/Language-Kotlin-purple.svg" alt="Kotlin" />
   <img src="https://img.shields.io/badge/UI-Jetpack%20Compose-blue.svg" alt="Jetpack Compose" />
   <img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License" />
+  <a href="https://github.com/SneakyZippy/PowerTrace/releases"><img src="https://img.shields.io/github/v/release/SneakyZippy/PowerTrace?include_prereleases&label=Latest%20APK&color=green" alt="Latest APK" /></a>
 </p>
 
 ---
@@ -20,6 +21,13 @@
 **PowerTrace** helps you find out what is actually draining your device's battery while the screen is off. 
 
 Standard Android battery menus only show coarse, aggregated percentages. PowerTrace takes snapshots of Android's internal diagnostic sources (`batterystats`, `dumpsys alarm`, `dumpsys power`, and device power profiles) to break down battery loss across custom recording sessions—without requiring root access.
+
+## Download
+
+Get the latest build directly from GitHub:
+
+- 📥 **[Download Latest APK (`PowerTrace-debug.apk`)](https://github.com/SneakyZippy/PowerTrace/releases/download/latest/PowerTrace-debug.apk)**
+- Or browse all releases on the **[Releases](https://github.com/SneakyZippy/PowerTrace/releases)** page.
 
 ## Key Features
 
