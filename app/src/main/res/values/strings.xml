@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">PowerTrace</string>
+    <string name="setup_title">ADB Privileges Setup</string>
+    <string name="session_title">Observation Session</string>
+    <string name="dashboard_title">Drain &amp; Culprits</string>
+    <string name="history_title">Session History</string>
+    <string name="settings_title">Diagnostics Settings</string>
+</resources>
