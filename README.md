@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/Platform-Android-green.svg" alt="Platform" />
   <img src="https://img.shields.io/badge/Language-Kotlin-purple.svg" alt="Kotlin" />
   <img src="https://img.shields.io/badge/UI-Jetpack%20Compose-blue.svg" alt="Jetpack Compose" />
-  <img src="https://img.shields.io/badge/License-Apache%202.0-lightgrey.svg" alt="License" />
+  <img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License" />
 </p>
 
 ---
@@ -70,4 +70,4 @@ You can then install the debug build directly to a connected device:
 
 ## License
 
-Licensed under the [Apache License, Version 2.0](LICENSE).
+This project is licensed under the terms of the GNU General Public License v3.0 ([GPL-3.0](LICENSE)).
