@@ -40,13 +40,39 @@ import com.antigravity.battery.ui.theme.DarkSurface
 import com.antigravity.battery.ui.theme.GreenPrimary
 import com.antigravity.battery.ui.theme.TextSecondary
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
 
+    private val requestNotificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+            if (isGranted) {
+                viewModel.refreshPermissions()
+            }
+        }
+
+    private fun checkAndPromptNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val hasNotifPermission = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!hasNotifPermission) {
+                requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        checkAndPromptNotificationPermission()
 
         setContent {
             BatteryDiagnosticsTheme {
@@ -88,34 +114,20 @@ class MainActivity : ComponentActivity() {
                                 onSelectFilter = { viewModel.setTimeFilter(it) },
                                 onSelectCulprit = { viewModel.selectCulprit(it) }
                             )
-                            AppNavTab.BENCHMARK -> SessionScreen(
-                                activeSession = activeSession,
-                                elapsedTimeFormatted = elapsedTime,
-                                autoStopOnUnlock = autoStopUnlock,
-                                autoStopOnCharger = autoStopCharger,
-                                onToggleAutoStopUnlock = { viewModel.toggleAutoStopUnlock(it) },
-                                onToggleAutoStopCharger = { viewModel.toggleAutoStopCharger(it) },
-                                onStartSession = { viewModel.startBenchmarkSession(it) },
-                                onStopSession = { viewModel.stopBenchmarkSession() },
-                                onResetSession = { viewModel.resetBenchmarkSession() },
-                                onSelectCulprit = { viewModel.selectCulprit(it) }
-                            )
-                            AppNavTab.HISTORY -> HistoryScreen(
-                                sessions = historicalSessions,
-                                onSelectSession = { entity ->
-                                    viewModel.selectHistoricalSession(entity)
-                                },
-                                onDeleteSession = { viewModel.deleteSession(it) },
-                                onClearAll = { viewModel.clearAllSessions() },
-                                onExportMarkdown = { viewModel.exportMarkdown(it) }
-                            )
-                            AppNavTab.SETTINGS -> SettingsScreen(
-                                useMockSource = useMock,
-                                onToggleMockSource = { viewModel.setMockSource(it) },
-                                powerProfile = powerProfile,
-                                onUpdateCpuAwakeMa = { viewModel.updateCpuAwakeMa(it) },
-                                onUpdateRadioMa = { viewModel.updateRadioMa(it) }
-                            )
+                            AppNavTab.SETTINGS -> {
+                                val showContinuousNotification by viewModel.showContinuousNotification.collectAsState()
+                                SettingsScreen(
+                                    useMockSource = useMock,
+                                    onToggleMockSource = { viewModel.setMockSource(it) },
+                                    powerProfile = powerProfile,
+                                    onUpdateCpuAwakeMa = { viewModel.updateCpuAwakeMa(it) },
+                                    onUpdateRadioMa = { viewModel.updateRadioMa(it) },
+                                    isContinuousEnabled = isContinuousEnabled,
+                                    onToggleContinuous = { viewModel.toggleContinuousTracking(it) },
+                                    showContinuousNotification = showContinuousNotification,
+                                    onToggleShowNotification = { viewModel.toggleShowContinuousNotification(it) }
+                                )
+                            }
                             AppNavTab.SETUP -> SetupScreen(
                                 permissionState = permissionState,
                                 onRefreshPermissions = { viewModel.refreshPermissions() },
@@ -125,11 +137,7 @@ class MainActivity : ComponentActivity() {
 
                         // Culprit Drill-down Bottom Sheet
                         if (selectedCulprit != null) {
-                            val activeCulprits = if (currentTab == AppNavTab.BENCHMARK) {
-                                activeSession?.delta?.culprits ?: emptyList()
-                            } else {
-                                timelineData?.topCulprits ?: emptyList()
-                            }
+                            val activeCulprits = timelineData?.topCulprits ?: emptyList()
                             val totalTrackedMah = activeCulprits.sumOf { it.totalEstimatedMah }
                             val culpritIndex = activeCulprits.indexOfFirst { it.uid == selectedCulprit?.uid }
                             val rank = if (culpritIndex >= 0) culpritIndex + 1 else null
@@ -169,20 +177,6 @@ private fun AppBottomNavigation(
             icon = Icons.Default.ShowChart,
             isSelected = currentTab == AppNavTab.OVERVIEW,
             onClick = { onTabSelected(AppNavTab.OVERVIEW) }
-        )
-        NavTabItem(
-            tab = AppNavTab.BENCHMARK,
-            label = "Benchmark",
-            icon = Icons.Default.Timer,
-            isSelected = currentTab == AppNavTab.BENCHMARK,
-            onClick = { onTabSelected(AppNavTab.BENCHMARK) }
-        )
-        NavTabItem(
-            tab = AppNavTab.HISTORY,
-            label = "History",
-            icon = Icons.Default.History,
-            isSelected = currentTab == AppNavTab.HISTORY,
-            onClick = { onTabSelected(AppNavTab.HISTORY) }
         )
         NavTabItem(
             tab = AppNavTab.SETTINGS,

@@ -97,10 +97,23 @@ class SnapshotManager(
         val realtimeMs = if (parsed.totalRealtimeMs > 0) parsed.totalRealtimeMs else SystemClock.elapsedRealtime()
         val uptimeMs = if (parsed.totalUptimeMs > 0) parsed.totalUptimeMs else SystemClock.uptimeMillis()
 
+        // Check hardware interactive (screen-on) state via PowerManager if context is present
+        val isScreenOn = if (ctx != null) {
+            try {
+                val powerManager = ctx.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+                powerManager?.isInteractive ?: parsed.isScreenOn
+            } catch (e: Exception) {
+                parsed.isScreenOn
+            }
+        } else {
+            parsed.isScreenOn
+        }
+
         return parsed.copy(
             batteryLevelPercent = batteryLevel,
             voltageMv = voltageMv,
             temperatureDeciCelsius = tempDeciCelsius,
+            isScreenOn = isScreenOn,
             totalRealtimeMs = realtimeMs,
             totalUptimeMs = uptimeMs
         )

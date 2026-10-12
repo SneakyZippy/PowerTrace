@@ -1,5 +1,6 @@
 package com.antigravity.battery.ui.screens
 
+import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -23,7 +24,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -46,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.antigravity.battery.core.permission.PermissionState
 import com.antigravity.battery.core.permission.PermissionStatus
+import com.antigravity.battery.ui.theme.AccentBlue
 import com.antigravity.battery.ui.theme.CulpritRed
 import com.antigravity.battery.ui.theme.DarkBackground
 import com.antigravity.battery.ui.theme.DarkSurface
@@ -109,6 +113,8 @@ fun SetupScreen(
 
             item {
                 Spacer(modifier = Modifier.height(8.dp))
+
+                // One-Line ADB Command Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = DarkSurface),
@@ -120,19 +126,30 @@ fun SetupScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                "One-Click Complete Script",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = TextPrimary
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Terminal, contentDescription = null, tint = GreenPrimary)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    "1-Line ADB Command",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = TextPrimary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                             IconButton(onClick = {
-                                clipboardManager.setText(AnnotatedString(permissionState.fullAdbScript))
-                                Toast.makeText(context, "Full setup script copied", Toast.LENGTH_SHORT).show()
+                                clipboardManager.setText(AnnotatedString(permissionState.singleLineAdbCommand))
+                                Toast.makeText(context, "1-Line ADB command copied!", Toast.LENGTH_SHORT).show()
                             }) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy script", tint = GreenPrimary)
+                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy 1-line command", tint = GreenPrimary)
                             }
                         }
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Paste once into your PC terminal to grant everything simultaneously:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -141,7 +158,7 @@ fun SetupScreen(
                                 .padding(10.dp)
                         ) {
                             Text(
-                                text = permissionState.fullAdbScript,
+                                text = permissionState.singleLineAdbCommand,
                                 color = GreenPrimary,
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 11.sp,
@@ -243,6 +260,37 @@ private fun PermissionItemCard(
             )
 
             if (!status.isGranted) {
+                if (status.settingsAction != null) {
+                    val context = LocalContext.current
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = {
+                            try {
+                                val intent = Intent(status.settingsAction)
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Could not open settings: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.OpenInNew,
+                            contentDescription = null,
+                            tint = AccentBlue,
+                            modifier = Modifier.height(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            "Open Settings to Grant Directly",
+                            color = AccentBlue,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(
                     modifier = Modifier

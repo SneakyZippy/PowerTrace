@@ -11,7 +11,8 @@ data class PermissionStatus(
     val permission: String,
     val isGranted: Boolean,
     val description: String,
-    val adbCommand: String
+    val adbCommand: String,
+    val settingsAction: String? = null
 )
 
 data class PermissionState(
@@ -20,7 +21,8 @@ data class PermissionState(
     val isPackageUsageStatsGranted: Boolean,
     val areAllRequiredGranted: Boolean,
     val statuses: List<PermissionStatus>,
-    val fullAdbScript: String
+    val fullAdbScript: String,
+    val singleLineAdbCommand: String
 )
 
 /**
@@ -55,8 +57,9 @@ class PermissionManager(private val context: Context) {
             PermissionStatus(
                 permission = "android.permission.PACKAGE_USAGE_STATS",
                 isGranted = usageStatsGranted,
-                description = "Required to correlate background app states and screen-off intervals.",
-                adbCommand = "adb shell pm grant $packageName android.permission.PACKAGE_USAGE_STATS\nadb shell appops set $packageName GET_USAGE_STATS allow"
+                description = "Required to correlate background app states and screen-off intervals. Can be granted via Settings or ADB.",
+                adbCommand = "adb shell pm grant $packageName android.permission.PACKAGE_USAGE_STATS\nadb shell appops set $packageName GET_USAGE_STATS allow",
+                settingsAction = android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS
             )
         )
 
@@ -67,13 +70,16 @@ class PermissionManager(private val context: Context) {
             adb shell appops set $packageName GET_USAGE_STATS allow
         """.trimIndent()
 
+        val singleLineCmd = "adb shell \"pm grant $packageName android.permission.BATTERY_STATS; pm grant $packageName android.permission.DUMP; pm grant $packageName android.permission.PACKAGE_USAGE_STATS; appops set $packageName GET_USAGE_STATS allow\""
+
         return PermissionState(
             isBatteryStatsGranted = batteryStatsGranted,
             isDumpGranted = dumpGranted,
             isPackageUsageStatsGranted = usageStatsGranted,
             areAllRequiredGranted = batteryStatsGranted && dumpGranted && usageStatsGranted,
             statuses = statuses,
-            fullAdbScript = fullScript
+            fullAdbScript = fullScript,
+            singleLineAdbCommand = singleLineCmd
         )
     }
 

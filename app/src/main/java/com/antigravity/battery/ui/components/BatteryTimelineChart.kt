@@ -74,6 +74,24 @@ fun BatteryTimelineChart(
     var selectedPointIndex by remember { mutableStateOf<Int?>(null) }
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
 
+    // Downsample points if there are too many to guarantee butter-smooth 60fps rendering
+    val displayPoints = remember(points) {
+        if (points.size <= 120) {
+            points
+        } else {
+            val step = (points.size / 100).coerceAtLeast(1)
+            val decimated = mutableListOf<TimelinePoint>()
+            decimated.add(points.first())
+            for (i in 1 until points.size - 1 step step) {
+                decimated.add(points[i])
+            }
+            if (decimated.last() != points.last()) {
+                decimated.add(points.last())
+            }
+            decimated
+        }
+    }
+
     val startMs = points.first().timestampMs
     val endMs = points.last().timestampMs
     val timeSpanMs = (endMs - startMs).coerceAtLeast(1L)
@@ -145,9 +163,9 @@ fun BatteryTimelineChart(
                 }
 
                 // Draw charging background highlights
-                for (i in 0 until points.size - 1) {
-                    val p1 = points[i]
-                    val p2 = points[i + 1]
+                for (i in 0 until displayPoints.size - 1) {
+                    val p1 = displayPoints[i]
+                    val p2 = displayPoints[i + 1]
                     if (p1.isCharging || p2.isCharging) {
                         val x1 = ((p1.timestampMs - startMs).toFloat() / timeSpanMs) * w
                         val x2 = ((p2.timestampMs - startMs).toFloat() / timeSpanMs) * w
@@ -163,7 +181,7 @@ fun BatteryTimelineChart(
                 val linePath = Path()
                 val fillPath = Path()
 
-                points.forEachIndexed { index, p ->
+                displayPoints.forEachIndexed { index, p ->
                     val x = if (timeSpanMs > 0) ((p.timestampMs - startMs).toFloat() / timeSpanMs) * w else 0f
                     val y = chartHeight - (p.batteryPercent / 100f * chartHeight)
 
@@ -176,7 +194,7 @@ fun BatteryTimelineChart(
                         fillPath.lineTo(x, y)
                     }
 
-                    if (index == points.size - 1) {
+                    if (index == displayPoints.size - 1) {
                         fillPath.lineTo(x, chartHeight)
                         fillPath.close()
                     }

@@ -15,6 +15,15 @@ interface ContinuousSnapshotDao {
     @Query("SELECT * FROM periodic_snapshots WHERE timestampMs BETWEEN :startMs AND :endMs ORDER BY timestampMs ASC")
     suspend fun getSnapshotsBetween(startMs: Long, endMs: Long): List<PeriodicSnapshotEntity>
 
+    @Query("SELECT id, timestampMs, batteryLevel, voltageMv, tempDeciCelsius, isCharging, isScreenOn, totalRealtimeMs, totalUptimeMs, screenOnDurationMs, screenOffDurationMs FROM periodic_snapshots WHERE timestampMs BETWEEN :startMs AND :endMs ORDER BY timestampMs ASC")
+    suspend fun getLightweightSnapshotsBetween(startMs: Long, endMs: Long): List<LightweightSnapshot>
+
+    @Query("SELECT id, timestampMs, batteryLevel, voltageMv, tempDeciCelsius, isCharging, isScreenOn, totalRealtimeMs, totalUptimeMs, screenOnDurationMs, screenOffDurationMs FROM periodic_snapshots WHERE timestampMs >= :sinceMs ORDER BY timestampMs ASC")
+    suspend fun getLightweightSnapshotsSince(sinceMs: Long): List<LightweightSnapshot>
+
+    @Query("SELECT * FROM periodic_snapshots WHERE id IN (:ids)")
+    suspend fun getSnapshotsByIds(ids: List<Long>): List<PeriodicSnapshotEntity>
+
     @Query("SELECT * FROM periodic_snapshots ORDER BY timestampMs DESC LIMIT 1")
     suspend fun getLatestSnapshot(): PeriodicSnapshotEntity?
 

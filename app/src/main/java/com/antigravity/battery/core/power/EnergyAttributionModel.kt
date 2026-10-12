@@ -8,7 +8,7 @@ import com.antigravity.battery.core.model.UidMetrics
  * Maps hardware active time durations to estimated milliampere-hours (mAh).
  */
 class EnergyAttributionModel(
-    private val powerProfile: PowerProfileData
+    val powerProfile: PowerProfileData
 ) {
 
     companion object {

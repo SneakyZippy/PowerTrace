@@ -75,7 +75,7 @@ class SnapshotDeltaCalculator(
             val startUid = start.uidMetricsMap[uid] ?: UidMetrics(uid)
             val endUid = end.uidMetricsMap[uid] ?: UidMetrics(uid)
 
-            val deltaUid = computeUidDelta(startUid, endUid, isRebootDetected)
+            val deltaUid = computeUidDelta(startUid, endUid, isRebootDetected, realtimeMs)
 
             // Resolve app metadata
             val appInfo = uidResolver.resolve(uid)
@@ -169,19 +169,44 @@ class SnapshotDeltaCalculator(
         )
     }
 
-    private fun computeUidDelta(start: UidMetrics, end: UidMetrics, isReboot: Boolean): UidMetrics {
-        val cpuUser = if (isReboot) end.cpuUserTimeMs else (end.cpuUserTimeMs - start.cpuUserTimeMs).coerceAtLeast(0L)
-        val cpuSys = if (isReboot) end.cpuSystemTimeMs else (end.cpuSystemTimeMs - start.cpuSystemTimeMs).coerceAtLeast(0L)
-        val wakelockDuration = if (isReboot) end.partialWakelockDurationMs else (end.partialWakelockDurationMs - start.partialWakelockDurationMs).coerceAtLeast(0L)
+    private fun computeUidDelta(start: UidMetrics, end: UidMetrics, isReboot: Boolean, maxSessionMs: Long): UidMetrics {
+        // Multi-core CPU time could theoretically exceed realtimeMs (up to numCores * realtimeMs),
+        // but cannot exceed unreasonable values. Non-CPU hardware cannot exceed realtimeMs.
+        val maxCpuMs = (maxSessionMs * 8).coerceAtLeast(60_000L)
+        val maxHardwareMs = maxSessionMs.coerceAtLeast(60_000L)
+
+        val rawCpuUser = if (isReboot) end.cpuUserTimeMs else (end.cpuUserTimeMs - start.cpuUserTimeMs).coerceAtLeast(0L)
+        val rawCpuSys = if (isReboot) end.cpuSystemTimeMs else (end.cpuSystemTimeMs - start.cpuSystemTimeMs).coerceAtLeast(0L)
+        val cpuUser = rawCpuUser.coerceAtMost(maxCpuMs)
+        val cpuSys = rawCpuSys.coerceAtMost(maxCpuMs)
+
+        val rawWl = if (isReboot) end.partialWakelockDurationMs else (end.partialWakelockDurationMs - start.partialWakelockDurationMs).coerceAtLeast(0L)
+        val wakelockDuration = rawWl.coerceAtMost(maxHardwareMs)
         val wakelockCount = if (isReboot) end.wakelockCount else (end.wakelockCount - start.wakelockCount).coerceAtLeast(0)
-        val radioActive = if (isReboot) end.mobileRadioActiveMs else (end.mobileRadioActiveMs - start.mobileRadioActiveMs).coerceAtLeast(0L)
+
+        val rawRadio = if (isReboot) end.mobileRadioActiveMs else (end.mobileRadioActiveMs - start.mobileRadioActiveMs).coerceAtLeast(0L)
+        val radioActive = rawRadio.coerceAtMost(maxHardwareMs)
+
         val mobRx = if (isReboot) end.mobileBytesRx else (end.mobileBytesRx - start.mobileBytesRx).coerceAtLeast(0L)
         val mobTx = if (isReboot) end.mobileBytesTx else (end.mobileBytesTx - start.mobileBytesTx).coerceAtLeast(0L)
         val wifiScans = if (isReboot) end.wifiScanCount else (end.wifiScanCount - start.wifiScanCount).coerceAtLeast(0)
-        val wifiRunning = if (isReboot) end.wifiRunningMs else (end.wifiRunningMs - start.wifiRunningMs).coerceAtLeast(0L)
+        val rawWifiRunning = if (isReboot) end.wifiRunningMs else (end.wifiRunningMs - start.wifiRunningMs).coerceAtLeast(0L)
+        val wifiRunning = rawWifiRunning.coerceAtMost(maxHardwareMs)
         val wifiRx = if (isReboot) end.wifiBytesRx else (end.wifiBytesRx - start.wifiBytesRx).coerceAtLeast(0L)
         val wifiTx = if (isReboot) end.wifiBytesTx else (end.wifiBytesTx - start.wifiBytesTx).coerceAtLeast(0L)
-        val gpsDuration = if (isReboot) end.gpsDurationMs else (end.gpsDurationMs - start.gpsDurationMs).coerceAtLeast(0L)
+
+        val rawGps = if (isReboot) end.gpsDurationMs else (end.gpsDurationMs - start.gpsDurationMs).coerceAtLeast(0L)
+        val gpsDuration = rawGps.coerceAtMost(maxHardwareMs)
+
+        // Compute true delta for CPU clusters rather than passing end array directly
+        val clusterDeltas = if (isReboot || end.cpuClusterTimesMs.isEmpty()) {
+            emptyList()
+        } else {
+            end.cpuClusterTimesMs.mapIndexed { idx, endVal ->
+                val startVal = start.cpuClusterTimesMs.getOrElse(idx) { 0L }
+                (endVal - startVal).coerceAtLeast(0L).coerceAtMost(maxCpuMs)
+            }
+        }
 
         // Compute tag deltas
         val allTags = (start.wakelockTags.keys + end.wakelockTags.keys).toSet()
@@ -190,7 +215,8 @@ class SnapshotDeltaCalculator(
             val startTag = start.wakelockTags[tag]
             val endTag = end.wakelockTags[tag]
             if (endTag != null) {
-                val duration = if (isReboot || startTag == null) endTag.durationMs else (endTag.durationMs - startTag.durationMs).coerceAtLeast(0L)
+                val rawDur = if (isReboot || startTag == null) endTag.durationMs else (endTag.durationMs - startTag.durationMs).coerceAtLeast(0L)
+                val duration = rawDur.coerceAtMost(maxHardwareMs)
                 val count = if (isReboot || startTag == null) endTag.count else (endTag.count - startTag.count).coerceAtLeast(0)
                 if (duration > 0 || count > 0) {
                     tagDeltas[tag] = WakelockTagStat(tag, duration, count)
@@ -202,7 +228,7 @@ class SnapshotDeltaCalculator(
             uid = end.uid,
             cpuUserTimeMs = cpuUser,
             cpuSystemTimeMs = cpuSys,
-            cpuClusterTimesMs = end.cpuClusterTimesMs,
+            cpuClusterTimesMs = clusterDeltas,
             partialWakelockDurationMs = wakelockDuration,
             wakelockCount = wakelockCount,
             mobileRadioActiveMs = radioActive,

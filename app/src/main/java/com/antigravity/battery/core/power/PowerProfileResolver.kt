@@ -37,6 +37,12 @@ class PowerProfileResolver(private val context: Context) {
             val wifiActive = queryPower("wifi.active", 85.0)
             val wifiScan = queryPower("wifi.scan", 75.0)
             val gpsActive = queryPower("gps.on", 60.0)
+            val batteryCapacity = try {
+                val getBatteryCapMethod = powerProfileClass.getMethod("getBatteryCapacity")
+                (getBatteryCapMethod.invoke(powerProfileInstance) as? Double) ?: queryPower("battery.capacity", 4500.0)
+            } catch (_: Exception) {
+                queryPower("battery.capacity", 4500.0)
+            }
 
             // Attempt to resolve CPU clusters
             val clusters = mutableListOf<Double>()
@@ -60,6 +66,7 @@ class PowerProfileResolver(private val context: Context) {
                 wifiActiveMa = wifiActive,
                 wifiScanMa = wifiScan,
                 gpsActiveMa = gpsActive,
+                batteryCapacityMah = if (batteryCapacity > 500.0) batteryCapacity else 4500.0,
                 isReflectedFromSystem = true,
                 sourceDescription = "Reflected from System PowerProfile"
             )
@@ -72,6 +79,7 @@ class PowerProfileResolver(private val context: Context) {
                 wifiActiveMa = 85.0,
                 wifiScanMa = 75.0,
                 gpsActiveMa = 60.0,
+                batteryCapacityMah = 4500.0,
                 isReflectedFromSystem = false,
                 sourceDescription = "Calibrated Reference Multi-Cluster Profile"
             )

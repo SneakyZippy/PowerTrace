@@ -236,6 +236,58 @@ fun CulpritDetailBottomSheet(
                 }
             }
 
+            // Actionable Prevention Card
+            if (!culprit.isSystemApp && culprit.primaryPackageName.isNotEmpty() && !culprit.primaryPackageName.startsWith("android.kernel")) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = AccentBlue,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "How To Prevent Drain From This App",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            val tips = mutableListOf<String>()
+                            if (culprit.wakeupAlarmCount >= 5) {
+                                tips.add("• Frequent Alarm Wakeups (${culprit.wakeupAlarmCount}x): Revoke 'Alarms & Reminders' permission in Android Settings or turn off in-app notification/sync polls.")
+                            }
+                            if (culprit.partialWakelockMs >= 15_000L) {
+                                tips.add("• Background Wakelock (${culprit.partialWakelockMs / 1000}s): Switch App Battery usage from 'Optimized' to 'Restricted' (or add to Deep Sleeping Apps).")
+                            }
+                            if (culprit.mobileRadioActiveMs >= 30_000L || culprit.mobileBytesRx + culprit.mobileBytesTx > 2 * 1024 * 1024) {
+                                tips.add("• Mobile Data Activity: Disable 'Background data' in Mobile Data usage settings to prevent syncing when screen is off.")
+                            }
+                            if (tips.isEmpty()) {
+                                tips.add("• Standby Activity: If this app should not run in background, restrict its battery profile in App Info.")
+                            }
+                            tips.forEach { tip ->
+                                Text(
+                                    text = tip,
+                                    fontSize = 12.sp,
+                                    color = TextSecondary,
+                                    lineHeight = 16.sp,
+                                    modifier = Modifier.padding(vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Hardware & Network Energy Attribution Breakdown
             item {
                 Text(

@@ -8,13 +8,16 @@ import com.antigravity.battery.core.model.UidMetrics
 import com.antigravity.battery.core.model.WakelockTagStat
 import com.antigravity.battery.core.power.EnergyAttributionModel
 import com.antigravity.battery.core.resolver.UidPackageResolver
+import com.antigravity.battery.data.db.LightweightSnapshot
 import com.antigravity.battery.data.db.PeriodicSnapshotEntity
 import kotlin.math.roundToInt
 
 enum class TimeWindowFilter(val label: String) {
-    SINCE_LAST_CHARGE("Since Last Charge"),
+    SINCE_LAST_CHARGE("Since Unplugged ⚡"),
+    LAST_2_HOURS("Last 2h"),
+    LAST_8_HOURS("Last 8h"),
+    OVERNIGHT_SLEEP("Overnight 🌙"),
     TODAY("Today"),
-    OVERNIGHT_SLEEP("Overnight Sleep 🌙"),
     YESTERDAY("Yesterday"),
     PAST_7_DAYS("Past 7 Days")
 }
@@ -48,9 +51,80 @@ class TimelineAggregationEngine(
     private val uidResolver: UidPackageResolver
 ) {
 
+    /**
+     * Identifies the minimal snapshot IDs needed for telemetry delta calculation.
+     * Only the boundary snapshots (start and end) of each contiguous discharge period
+     * need to have their heavy JSON metrics loaded.
+     */
+    fun findRequiredBoundarySnapshotIds(snapshots: List<LightweightSnapshot>): List<Long> {
+        if (snapshots.isEmpty()) return emptyList()
+        val ids = mutableSetOf<Long>()
+        var segmentStartIdx: Int? = null
+
+        for (i in 0 until snapshots.size - 1) {
+            val curr = snapshots[i]
+            val next = snapshots[i + 1]
+            val deltaLevel = next.batteryLevel - curr.batteryLevel
+            val isDischarge = !curr.isCharging && !next.isCharging && deltaLevel <= 0 && next.totalRealtimeMs >= curr.totalRealtimeMs
+
+            if (isDischarge) {
+                if (segmentStartIdx == null) {
+                    segmentStartIdx = i
+                }
+            } else {
+                if (segmentStartIdx != null) {
+                    ids.add(snapshots[segmentStartIdx].id)
+                    ids.add(snapshots[i].id)
+                    segmentStartIdx = null
+                }
+            }
+        }
+
+        if (segmentStartIdx != null) {
+            ids.add(snapshots[segmentStartIdx].id)
+            ids.add(snapshots.last().id)
+        }
+
+        ids.add(snapshots.first().id)
+        ids.add(snapshots.last().id)
+        return ids.toList()
+    }
+
+    /**
+     * Backward-compatible entrypoint used when full PeriodicSnapshotEntities are already in memory (e.g. tests).
+     */
     fun aggregate(
         filter: TimeWindowFilter,
         snapshots: List<PeriodicSnapshotEntity>,
+        nowMs: Long = System.currentTimeMillis()
+    ): TimelineViewData {
+        val lightSnapshots = snapshots.map { s ->
+            LightweightSnapshot(
+                id = s.id,
+                timestampMs = s.timestampMs,
+                batteryLevel = s.batteryLevel,
+                voltageMv = s.voltageMv,
+                tempDeciCelsius = s.tempDeciCelsius,
+                isCharging = s.isCharging,
+                isScreenOn = s.isScreenOn,
+                totalRealtimeMs = s.totalRealtimeMs,
+                totalUptimeMs = s.totalUptimeMs,
+                screenOnDurationMs = s.screenOnDurationMs,
+                screenOffDurationMs = s.screenOffDurationMs
+            )
+        }
+        val fullMap = snapshots.associateBy { it.id }
+        return aggregateLightweight(filter, lightSnapshots, fullMap, nowMs)
+    }
+
+    /**
+     * High-speed aggregation using lightweight snapshots for timeline points/durations,
+     * and only querying/parsing JSON for discharge segment boundaries.
+     */
+    fun aggregateLightweight(
+        filter: TimeWindowFilter,
+        snapshots: List<LightweightSnapshot>,
+        boundarySnapshots: Map<Long, PeriodicSnapshotEntity>,
         nowMs: Long = System.currentTimeMillis()
     ): TimelineViewData {
         if (snapshots.isEmpty()) {
@@ -87,12 +161,12 @@ class TimelineAggregationEngine(
         var totalDeepSleepMs = 0L
         var totalAwakeScreenOffMs = 0L
 
-        // UID accumulator across all discharge intervals
-        val aggregatedUidDeltas = mutableMapOf<Int, MutableUidDelta>()
-        val aggregatedAlarms = mutableMapOf<String, Int>()
-        val aggregatedAlarmActions = mutableMapOf<String, MutableMap<String, Int>>()
+        // Track contiguous discharge segments
+        data class Segment(val startIdx: Int, val endIdx: Int, val durationMs: Long)
+        val dischargeSegments = mutableListOf<Segment>()
+        var currentSegmentStart: Int? = null
 
-        // Step through adjacent snapshot intervals
+        // Step through adjacent snapshot intervals for hardware timers
         for (i in 0 until snapshots.size - 1) {
             val curr = snapshots[i]
             val next = snapshots[i + 1]
@@ -100,9 +174,18 @@ class TimelineAggregationEngine(
             val deltaLevel = next.batteryLevel - curr.batteryLevel
             val deltaDuration = (next.timestampMs - curr.timestampMs).coerceAtLeast(0L)
 
-            if (curr.isCharging || next.isCharging || deltaLevel > 0) {
-                // Charging segment
+            val isChargingInterval = curr.isCharging || next.isCharging || deltaLevel > 0
+            val isReboot = next.totalRealtimeMs < curr.totalRealtimeMs
+
+            if (isChargingInterval || isReboot) {
                 if (deltaLevel > 0) totalChargeGain += deltaLevel
+                if (currentSegmentStart != null) {
+                    if (currentSegmentStart != i) {
+                        val segDuration = (snapshots[i].timestampMs - snapshots[currentSegmentStart].timestampMs).coerceAtLeast(0L)
+                        dischargeSegments.add(Segment(currentSegmentStart, i, segDuration))
+                    }
+                    currentSegmentStart = null
+                }
             } else {
                 // Discharging segment
                 val drop = (curr.batteryLevel - next.batteryLevel).coerceAtLeast(0)
@@ -120,14 +203,34 @@ class TimelineAggregationEngine(
                 totalDeepSleepMs += sliceDeepSleep
                 totalAwakeScreenOffMs += sliceAwakeScreenOff
 
-                // Accumulate UID deltas between curr and next
-                val currUids = SnapshotSerializer.deserializeUidMetrics(curr.uidMetricsJson)
-                val nextUids = SnapshotSerializer.deserializeUidMetrics(next.uidMetricsJson)
-                val currAlarms = SnapshotSerializer.deserializePackageAlarms(curr.packageAlarmsJson)
-                val nextAlarms = SnapshotSerializer.deserializePackageAlarms(next.packageAlarmsJson)
+                if (currentSegmentStart == null) {
+                    currentSegmentStart = i
+                }
+            }
+        }
 
-                accumulateUids(currUids, nextUids, aggregatedUidDeltas)
-                accumulateAlarms(currAlarms, nextAlarms, aggregatedAlarms, aggregatedAlarmActions)
+        if (currentSegmentStart != null && currentSegmentStart != snapshots.size - 1) {
+            val lastIdx = snapshots.size - 1
+            val segDuration = (snapshots[lastIdx].timestampMs - snapshots[currentSegmentStart].timestampMs).coerceAtLeast(0L)
+            dischargeSegments.add(Segment(currentSegmentStart, lastIdx, segDuration))
+        }
+
+        // Aggregate UID deltas across identified discharge segments
+        val aggregatedUidDeltas = mutableMapOf<Int, MutableUidDelta>()
+        val aggregatedAlarms = mutableMapOf<String, Int>()
+        val aggregatedAlarmActions = mutableMapOf<String, MutableMap<String, Int>>()
+
+        for (segment in dischargeSegments) {
+            val startEntity = boundarySnapshots[snapshots[segment.startIdx].id]
+            val endEntity = boundarySnapshots[snapshots[segment.endIdx].id]
+            if (startEntity != null && endEntity != null) {
+                val startUids = SnapshotSerializer.deserializeUidMetrics(startEntity.uidMetricsJson)
+                val endUids = SnapshotSerializer.deserializeUidMetrics(endEntity.uidMetricsJson)
+                val startAlarms = SnapshotSerializer.deserializePackageAlarms(startEntity.packageAlarmsJson)
+                val endAlarms = SnapshotSerializer.deserializePackageAlarms(endEntity.packageAlarmsJson)
+
+                accumulateUids(startUids, endUids, aggregatedUidDeltas, segment.durationMs)
+                accumulateAlarms(startAlarms, endAlarms, aggregatedAlarms, aggregatedAlarmActions)
             }
         }
 
@@ -229,25 +332,41 @@ class TimelineAggregationEngine(
     private fun accumulateUids(
         curr: Map<Int, UidMetrics>,
         next: Map<Int, UidMetrics>,
-        accumulator: MutableMap<Int, MutableUidDelta>
+        accumulator: MutableMap<Int, MutableUidDelta>,
+        segmentDurationMs: Long = Long.MAX_VALUE
     ) {
+        val maxCpuMs = (segmentDurationMs * 8).coerceAtLeast(60_000L)
+        val maxHardwareMs = segmentDurationMs.coerceAtLeast(60_000L)
+
         val allUids = (curr.keys + next.keys).toSet()
         for (uid in allUids) {
             val c = curr[uid] ?: UidMetrics(uid)
             val n = next[uid] ?: UidMetrics(uid)
 
-            val dUser = (n.cpuUserTimeMs - c.cpuUserTimeMs).coerceAtLeast(0L)
-            val dSys = (n.cpuSystemTimeMs - c.cpuSystemTimeMs).coerceAtLeast(0L)
-            val dWl = (n.partialWakelockDurationMs - c.partialWakelockDurationMs).coerceAtLeast(0L)
+            val rawUser = (n.cpuUserTimeMs - c.cpuUserTimeMs).coerceAtLeast(0L)
+            val rawSys = (n.cpuSystemTimeMs - c.cpuSystemTimeMs).coerceAtLeast(0L)
+            val dUser = rawUser.coerceAtMost(maxCpuMs)
+            val dSys = rawSys.coerceAtMost(maxCpuMs)
+
+            val rawWl = (n.partialWakelockDurationMs - c.partialWakelockDurationMs).coerceAtLeast(0L)
+            val dWl = rawWl.coerceAtMost(maxHardwareMs)
             val dWlCount = (n.wakelockCount - c.wakelockCount).coerceAtLeast(0)
-            val dRadio = (n.mobileRadioActiveMs - c.mobileRadioActiveMs).coerceAtLeast(0L)
+
+            val rawRadio = (n.mobileRadioActiveMs - c.mobileRadioActiveMs).coerceAtLeast(0L)
+            val dRadio = rawRadio.coerceAtMost(maxHardwareMs)
+
             val dMobRx = (n.mobileBytesRx - c.mobileBytesRx).coerceAtLeast(0L)
             val dMobTx = (n.mobileBytesTx - c.mobileBytesTx).coerceAtLeast(0L)
             val dWifiScans = (n.wifiScanCount - c.wifiScanCount).coerceAtLeast(0)
-            val dWifiRun = (n.wifiRunningMs - c.wifiRunningMs).coerceAtLeast(0L)
+
+            val rawWifiRun = (n.wifiRunningMs - c.wifiRunningMs).coerceAtLeast(0L)
+            val dWifiRun = rawWifiRun.coerceAtMost(maxHardwareMs)
+
             val dWifiRx = (n.wifiBytesRx - c.wifiBytesRx).coerceAtLeast(0L)
             val dWifiTx = (n.wifiBytesTx - c.wifiBytesTx).coerceAtLeast(0L)
-            val dGps = (n.gpsDurationMs - c.gpsDurationMs).coerceAtLeast(0L)
+
+            val rawGps = (n.gpsDurationMs - c.gpsDurationMs).coerceAtLeast(0L)
+            val dGps = rawGps.coerceAtMost(maxHardwareMs)
 
             val entry = accumulator.getOrPut(uid) { MutableUidDelta() }
             entry.cpuUser += dUser
@@ -266,7 +385,8 @@ class TimelineAggregationEngine(
             // Tags
             for ((tag, nextStat) in n.wakelockTags) {
                 val currStat = c.wakelockTags[tag]
-                val dTagDur = if (currStat != null) (nextStat.durationMs - currStat.durationMs).coerceAtLeast(0L) else nextStat.durationMs
+                val rawTagDur = if (currStat != null) (nextStat.durationMs - currStat.durationMs).coerceAtLeast(0L) else nextStat.durationMs
+                val dTagDur = rawTagDur.coerceAtMost(maxHardwareMs)
                 val dTagCnt = if (currStat != null) (nextStat.count - currStat.count).coerceAtLeast(0) else nextStat.count
                 if (dTagDur > 0 || dTagCnt > 0) {
                     val existing = entry.tags[tag]

@@ -10,6 +10,7 @@ data class PowerProfileData(
     val wifiActiveMa: Double = 85.0,        // Wi-Fi transceiver active mA
     val wifiScanMa: Double = 75.0,          // Wi-Fi active scan mA
     val gpsActiveMa: Double = 60.0,         // GPS sensor active mA
+    val batteryCapacityMah: Double = 4500.0, // Typical nominal battery capacity (mAh)
     val isReflectedFromSystem: Boolean = false,
     val sourceDescription: String = "Calibrated Default"
 )

@@ -42,8 +42,6 @@ import java.util.UUID
 
 enum class AppNavTab {
     OVERVIEW,
-    BENCHMARK,
-    HISTORY,
     SETTINGS,
     SETUP
 }
@@ -66,8 +64,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _useMockSource = MutableStateFlow(false)
     val useMockSource: StateFlow<Boolean> = _useMockSource.asStateFlow()
 
-    private val _isContinuousTrackingEnabled = MutableStateFlow(false)
+    private val _isContinuousTrackingEnabled = MutableStateFlow(
+        ContinuousMonitoringService.isServiceActive(application)
+    )
     val isContinuousTrackingEnabled: StateFlow<Boolean> = _isContinuousTrackingEnabled.asStateFlow()
+
+    private val _showContinuousNotification = MutableStateFlow(
+        ContinuousMonitoringService.isNotificationEnabled(application)
+    )
+    val showContinuousNotification: StateFlow<Boolean> = _showContinuousNotification.asStateFlow()
 
     private val _powerProfile = MutableStateFlow(powerResolver.resolve())
     val powerProfile: StateFlow<PowerProfileData> = _powerProfile.asStateFlow()
@@ -113,12 +118,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var timelineRefreshJob: Job? = null
 
     init {
+        // Ensure continuous service state is synchronized on startup
+        if (_isContinuousTrackingEnabled.value && !ContinuousMonitoringService.isRunning) {
+            ContinuousMonitoringService.start(application)
+        }
+
         refreshTimelineData()
 
         // Periodically refresh timeline data while app is open
         viewModelScope.launch {
             while (isActive) {
                 delay(30_000L)
+                _isContinuousTrackingEnabled.value = ContinuousMonitoringService.isServiceActive(application)
                 refreshTimelineData()
             }
         }
@@ -151,6 +162,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshPermissions() {
         val updated = permissionManager.checkPermissions()
         _permissionState.value = updated
+        _isContinuousTrackingEnabled.value = ContinuousMonitoringService.isServiceActive(getApplication())
         if (updated.areAllRequiredGranted) {
             if (_currentTab.value == AppNavTab.SETUP) {
                 _currentTab.value = AppNavTab.OVERVIEW
@@ -167,29 +179,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun toggleShowContinuousNotification(enabled: Boolean) {
+        _showContinuousNotification.value = enabled
+        ContinuousMonitoringService.setShowNotification(getApplication(), enabled)
+    }
+
     fun refreshTimelineData() {
         timelineRefreshJob?.cancel()
         timelineRefreshJob = viewModelScope.launch {
             val nowMs = System.currentTimeMillis()
             val (startMs, endMs) = computeTimeBounds(_selectedTimeFilter.value, nowMs)
 
-            val snapshots = if (_selectedTimeFilter.value == TimeWindowFilter.SINCE_LAST_CHARGE) {
+            val lightSnapshots = if (_selectedTimeFilter.value == TimeWindowFilter.SINCE_LAST_CHARGE) {
                 val lastCharge = continuousDao.getLastFullChargeSnapshot()
                 val since = lastCharge?.timestampMs ?: (nowMs - 24 * 3600 * 1000L)
-                continuousDao.getSnapshotsSince(since)
+                continuousDao.getLightweightSnapshotsSince(since)
             } else {
-                continuousDao.getSnapshotsBetween(startMs, endMs)
+                continuousDao.getLightweightSnapshotsBetween(startMs, endMs)
             }
 
             val attributionModel = EnergyAttributionModel(_powerProfile.value)
             val timelineEngine = TimelineAggregationEngine(attributionModel, culpritDetector, uidResolver)
-            _timelineData.value = timelineEngine.aggregate(_selectedTimeFilter.value, snapshots, nowMs)
+
+            val boundaryIds = timelineEngine.findRequiredBoundarySnapshotIds(lightSnapshots)
+            val boundaryEntities = if (boundaryIds.isNotEmpty()) {
+                continuousDao.getSnapshotsByIds(boundaryIds).associateBy { it.id }
+            } else emptyMap()
+
+            _timelineData.value = timelineEngine.aggregateLightweight(
+                _selectedTimeFilter.value,
+                lightSnapshots,
+                boundaryEntities,
+                nowMs
+            )
         }
     }
 
     private suspend fun computeTimeBounds(filter: TimeWindowFilter, nowMs: Long): Pair<Long, Long> {
         val cal = Calendar.getInstance()
         return when (filter) {
+            TimeWindowFilter.LAST_2_HOURS -> {
+                Pair(nowMs - (2 * 3600 * 1000L), nowMs)
+            }
+            TimeWindowFilter.LAST_8_HOURS -> {
+                Pair(nowMs - (8 * 3600 * 1000L), nowMs)
+            }
             TimeWindowFilter.TODAY -> {
                 cal.timeInMillis = nowMs
                 cal.set(Calendar.HOUR_OF_DAY, 0)
@@ -382,7 +416,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
         _activeSession.value = session
         _latestBenchmarkDelta.value = session.delta
-        _currentTab.value = AppNavTab.BENCHMARK
+        _currentTab.value = AppNavTab.OVERVIEW
     }
 
     fun deleteSession(sessionId: String) {

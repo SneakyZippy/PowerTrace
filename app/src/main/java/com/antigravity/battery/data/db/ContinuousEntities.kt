@@ -42,3 +42,21 @@ data class DailyRollupEntity(
     val topCulpritsJson: String,
     val updatedAt: Long = System.currentTimeMillis()
 )
+
+/**
+ * Lightweight snapshot projection without heavy JSON payloads.
+ * Drastically speeds up chart generation, screen-off stats, and timeline queries.
+ */
+data class LightweightSnapshot(
+    val id: Long,
+    val timestampMs: Long,
+    val batteryLevel: Int,
+    val voltageMv: Int,
+    val tempDeciCelsius: Int,
+    val isCharging: Boolean,
+    val isScreenOn: Boolean,
+    val totalRealtimeMs: Long,
+    val totalUptimeMs: Long,
+    val screenOnDurationMs: Long,
+    val screenOffDurationMs: Long
+)

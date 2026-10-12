@@ -106,6 +106,10 @@ fun DozeSleepEfficiencyBar(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null
 ) {
+    val screenOffTotalMs = (deepSleepMs + awakeScreenOffMs).coerceAtLeast(1L).toFloat()
+    val deepSleepOfScreenOff = ((deepSleepMs.toDouble() / screenOffTotalMs.toDouble()) * 100.0).toInt().coerceIn(0, 100)
+    val awakeOfScreenOff = (100 - deepSleepOfScreenOff).coerceIn(0, 100)
+
     val totalMs = (deepSleepMs + awakeScreenOffMs + screenOnMs).coerceAtLeast(1L).toFloat()
     val deepSleepRatio = (deepSleepMs / totalMs).coerceIn(0f, 1f)
     val awakeRatio = (awakeScreenOffMs / totalMs).coerceIn(0f, 1f)
@@ -120,7 +124,7 @@ fun DozeSleepEfficiencyBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Sleep State Distribution", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                Text("Screen-Off Sleep Efficiency", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                 if (onClick != null) {
                     Spacer(modifier = Modifier.width(4.dp))
                     Icon(
@@ -132,9 +136,9 @@ fun DozeSleepEfficiencyBar(
                 }
             }
             Text(
-                "Deep Sleep: ${(deepSleepRatio * 100).toInt()}%",
+                text = "Deep Sleep: $deepSleepOfScreenOff% of idle",
                 style = MaterialTheme.typography.labelSmall,
-                color = GreenPrimary,
+                color = if (deepSleepOfScreenOff >= 85) GreenPrimary else if (deepSleepOfScreenOff >= 70) CulpritAmber else CulpritRed,
                 fontWeight = FontWeight.Bold
             )
         }
@@ -176,10 +180,24 @@ fun DozeSleepEfficiencyBar(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            LegendItem(color = GreenPrimary, text = "Deep Sleep (${deepSleepMs / 60000}m)")
-            LegendItem(color = CulpritAmber, text = "Awake Screen Off (${awakeScreenOffMs / 60000}m)")
+            val deepMins = deepSleepMs / 60000
+            val deepHours = deepMins / 60
+            val deepRemMins = deepMins % 60
+            val deepText = if (deepHours > 0) "${deepHours}h ${deepRemMins}m" else "${deepMins}m"
+
+            val awakeMins = awakeScreenOffMs / 60000
+            val awakeHours = awakeMins / 60
+            val awakeRemMins = awakeMins % 60
+            val awakeText = if (awakeHours > 0) "${awakeHours}h ${awakeRemMins}m" else "${awakeMins}m"
+
+            LegendItem(color = GreenPrimary, text = "Deep Sleep ($deepText • $deepSleepOfScreenOff%)")
+            LegendItem(color = CulpritAmber, text = "Awake ($awakeText • $awakeOfScreenOff%)")
             if (screenOnMs > 0) {
-                LegendItem(color = AccentBlue, text = "Screen On (${screenOnMs / 60000}m)")
+                val sonMins = screenOnMs / 60000
+                val sonHours = sonMins / 60
+                val sonRemMins = sonMins % 60
+                val sonText = if (sonHours > 0) "${sonHours}h ${sonRemMins}m" else "${sonMins}m"
+                LegendItem(color = AccentBlue, text = "Screen On ($sonText)")
             }
         }
     }

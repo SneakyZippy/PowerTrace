@@ -35,16 +35,41 @@ import kotlinx.coroutines.launch
 class ContinuousMonitoringService : Service() {
 
     companion object {
-        const val CHANNEL_ID = "volttrace_continuous_channel"
+        const val CHANNEL_ID = "volttrace_continuous_live_v2"
         const val NOTIFICATION_ID = 2002
         const val ACTION_START = "com.antigravity.battery.action.START_CONTINUOUS"
         const val ACTION_STOP = "com.antigravity.battery.action.STOP_CONTINUOUS"
         const val ACTION_TRIGGER_SNAPSHOT = "com.antigravity.battery.action.TRIGGER_SNAPSHOT"
 
+        const val PREFS_NAME = "powertrace_prefs"
+        const val PREF_KEY_CONTINUOUS_TRACKING = "continuous_tracking_enabled"
+        const val PREF_KEY_SHOW_LIVE_NOTIFICATION = "show_live_notification"
+
         var isRunning = false
             private set
 
+        fun isServiceActive(context: Context): Boolean {
+            if (isRunning) return true
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return prefs.getBoolean(PREF_KEY_CONTINUOUS_TRACKING, false)
+        }
+
+        fun isNotificationEnabled(context: Context): Boolean {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return prefs.getBoolean(PREF_KEY_SHOW_LIVE_NOTIFICATION, true)
+        }
+
+        fun setShowNotification(context: Context, enabled: Boolean) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putBoolean(PREF_KEY_SHOW_LIVE_NOTIFICATION, enabled).apply()
+            if (isRunning) {
+                triggerSnapshot(context)
+            }
+        }
+
         fun start(context: Context) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putBoolean(PREF_KEY_CONTINUOUS_TRACKING, true).apply()
             val intent = Intent(context, ContinuousMonitoringService::class.java).apply {
                 action = ACTION_START
             }
@@ -56,6 +81,8 @@ class ContinuousMonitoringService : Service() {
         }
 
         fun stop(context: Context) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putBoolean(PREF_KEY_CONTINUOUS_TRACKING, false).apply()
             val intent = Intent(context, ContinuousMonitoringService::class.java).apply {
                 action = ACTION_STOP
             }
@@ -195,13 +222,19 @@ class ContinuousMonitoringService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        val showLive = isNotificationEnabled(this)
+        val title = if (showLive) "PowerTrace 24/7 Diagnostics" else "PowerTrace Active"
+        val text = if (showLive) statusText else "24/7 background telemetry is active"
+        val priority = if (showLive) NotificationCompat.PRIORITY_DEFAULT else NotificationCompat.PRIORITY_MIN
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("PowerTrace 24/7 Diagnostics")
-            .setContentText(statusText)
+            .setContentTitle(title)
+            .setContentText(text)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setOngoing(true)
             .setContentIntent(pendingOpen)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setPriority(priority)
+            .setOnlyAlertOnce(true)
             .build()
     }
 
@@ -210,9 +243,10 @@ class ContinuousMonitoringService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Continuous Battery Tracking",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
                 description = "Shows live status of 24/7 background battery and wakelock tracking"
+                setShowBadge(false)
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
