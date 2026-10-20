@@ -47,6 +47,7 @@ PowerTrace reads protected system stats that are not exposed to normal third-par
 adb shell pm grant com.antigravity.battery android.permission.BATTERY_STATS
 adb shell pm grant com.antigravity.battery android.permission.DUMP
 adb shell pm grant com.antigravity.battery android.permission.PACKAGE_USAGE_STATS
+adb shell pm grant com.antigravity.battery android.permission.INTERACT_ACROSS_USERS
 adb shell appops set com.antigravity.battery GET_USAGE_STATS allow
 ```
 

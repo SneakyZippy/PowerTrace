@@ -54,9 +54,10 @@ class SnapshotDeltaCalculator(
         val screenOffMs = (realtimeMs - screenOnMs).coerceAtLeast(0L)
         val deepSleepMs = (realtimeMs - uptimeMs).coerceAtLeast(0L)
         val awakeScreenOffMs = (uptimeMs - screenOnMs).coerceAtLeast(0L)
+        val screenOffHardwareMs = deepSleepMs + awakeScreenOffMs
 
-        val sleepEfficiency = if (screenOffMs > 0) {
-            ((deepSleepMs.toDouble() / screenOffMs.toDouble()) * 100.0).coerceIn(0.0, 100.0)
+        val sleepEfficiency = if (screenOffHardwareMs > 0L) {
+            ((deepSleepMs.toDouble() / screenOffHardwareMs.toDouble()) * 100.0).coerceIn(0.0, 100.0)
         } else 100.0
 
         val batteryDrop = (startDev.batteryLevelPercent - endDev.batteryLevelPercent).coerceAtLeast(0)

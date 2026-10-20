@@ -37,11 +37,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import com.antigravity.battery.core.engine.AnalyticsEngine
+import com.antigravity.battery.core.model.OverallAnalytics
+import kotlinx.coroutines.Dispatchers
 import java.util.Calendar
 import java.util.UUID
 
 enum class AppNavTab {
     OVERVIEW,
+    ANALYTICS,
     SETTINGS,
     SETUP
 }
@@ -116,6 +120,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var timerJob: Job? = null
     private var timelineRefreshJob: Job? = null
+    private var analyticsRefreshJob: Job? = null
+
+    private val _analyticsData = MutableStateFlow<OverallAnalytics?>(null)
+    val analyticsData: StateFlow<OverallAnalytics?> = _analyticsData.asStateFlow()
+
+    private val _isAnalyticsLoading = MutableStateFlow(false)
+    val isAnalyticsLoading: StateFlow<Boolean> = _isAnalyticsLoading.asStateFlow()
 
     init {
         // Ensure continuous service state is synchronized on startup
@@ -124,6 +135,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         refreshTimelineData()
+        refreshAnalytics()
 
         // Periodically refresh timeline data while app is open
         viewModelScope.launch {
@@ -148,10 +160,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setTab(tab: AppNavTab) {
         _currentTab.value = tab
+        if (tab == AppNavTab.ANALYTICS && _analyticsData.value == null) {
+            refreshAnalytics()
+        }
     }
 
     fun selectCulprit(culprit: CulpritApp?) {
         _selectedCulprit.value = culprit
+    }
+
+    fun refreshAnalytics() {
+        analyticsRefreshJob?.cancel()
+        analyticsRefreshJob = viewModelScope.launch(Dispatchers.Default) {
+            _isAnalyticsLoading.value = true
+            try {
+                val snapshots = continuousDao.getAllLightweightSnapshots()
+                val timelineEngine = TimelineAggregationEngine(
+                    EnergyAttributionModel(_powerProfile.value),
+                    culpritDetector,
+                    uidResolver
+                )
+                val boundaryIds = timelineEngine.findRequiredBoundarySnapshotIds(snapshots)
+                val boundaryEntities = if (boundaryIds.isNotEmpty()) {
+                    continuousDao.getSnapshotsByIds(boundaryIds).associateBy { it.id }
+                } else emptyMap()
+
+                val analyticsEngine = AnalyticsEngine(uidResolver, _powerProfile.value)
+                val result = analyticsEngine.computeAnalytics(snapshots, boundaryEntities)
+                _analyticsData.value = result
+            } catch (e: Exception) {
+                android.util.Log.e("MainViewModel", "Error computing analytics: ${e.message}", e)
+            } finally {
+                _isAnalyticsLoading.value = false
+            }
+        }
     }
 
     fun setTimeFilter(filter: TimeWindowFilter) {

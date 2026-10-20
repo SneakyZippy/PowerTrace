@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShowChart
@@ -28,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.antigravity.battery.ui.AppNavTab
 import com.antigravity.battery.ui.MainViewModel
+import com.antigravity.battery.ui.screens.AnalyticsScreen
 import com.antigravity.battery.ui.screens.CulpritDetailBottomSheet
 import com.antigravity.battery.ui.screens.HistoryScreen
 import com.antigravity.battery.ui.screens.OverviewScreen
@@ -92,6 +94,10 @@ class MainActivity : ComponentActivity() {
                 val selectedTimeFilter by viewModel.selectedTimeFilter.collectAsState()
                 val isContinuousEnabled by viewModel.isContinuousTrackingEnabled.collectAsState()
 
+                // Analytics data
+                val analyticsData by viewModel.analyticsData.collectAsState()
+                val isAnalyticsLoading by viewModel.isAnalyticsLoading.collectAsState()
+
                 val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
                 Scaffold(
@@ -113,6 +119,11 @@ class MainActivity : ComponentActivity() {
                                 onToggleContinuous = { viewModel.toggleContinuousTracking(it) },
                                 onSelectFilter = { viewModel.setTimeFilter(it) },
                                 onSelectCulprit = { viewModel.selectCulprit(it) }
+                            )
+                            AppNavTab.ANALYTICS -> AnalyticsScreen(
+                                analytics = analyticsData,
+                                isLoading = isAnalyticsLoading,
+                                onRefresh = { viewModel.refreshAnalytics() }
                             )
                             AppNavTab.SETTINGS -> {
                                 val showContinuousNotification by viewModel.showContinuousNotification.collectAsState()
@@ -162,6 +173,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         viewModel.refreshPermissions()
         viewModel.refreshTimelineData()
+        viewModel.refreshAnalytics()
     }
 }
 
@@ -177,6 +189,13 @@ private fun AppBottomNavigation(
             icon = Icons.Default.ShowChart,
             isSelected = currentTab == AppNavTab.OVERVIEW,
             onClick = { onTabSelected(AppNavTab.OVERVIEW) }
+        )
+        NavTabItem(
+            tab = AppNavTab.ANALYTICS,
+            label = "Analytics",
+            icon = Icons.Default.Insights,
+            isSelected = currentTab == AppNavTab.ANALYTICS,
+            onClick = { onTabSelected(AppNavTab.ANALYTICS) }
         )
         NavTabItem(
             tab = AppNavTab.SETTINGS,

@@ -44,4 +44,26 @@ class EnergyAttributionModelTest {
         val expectedTotal = 101.25 + 28.0 + 67.5
         assertEquals(expectedTotal, totalMah, 0.5)
     }
+
+    @Test
+    fun testCalculateWifiEnergyAttribution() {
+        val profile = PowerProfileData(wifiScanMa = 75.0)
+        val model = EnergyAttributionModel(profile)
+
+        // 100 MB transferred over Wi-Fi + 4 scans
+        val uidMetrics = UidMetrics(
+            uid = 10200,
+            wifiBytesRx = 70L * 1024L * 1024L,
+            wifiBytesTx = 30L * 1024L * 1024L,
+            wifiScanCount = 4
+        )
+
+        val (totalMah, breakdown) = model.calculateEnergy(uidMetrics)
+
+        // 100 MB * 0.015 mAh/MB = 1.5 mAh
+        // 4 scans * (2500ms / 3600000ms) * 75mA = 4 * 0.052 mAh = 0.208 mAh
+        // Expected total Wi-Fi = ~1.71 mAh
+        assertEquals(1.71, breakdown.wifiMah, 0.1)
+        assertEquals(1.71, totalMah, 0.1)
+    }
 }

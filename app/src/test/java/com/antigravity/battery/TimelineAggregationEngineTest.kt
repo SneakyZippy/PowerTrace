@@ -103,6 +103,9 @@ class TimelineAggregationEngineTest {
         // Charge gain should be 5%
         assertEquals(5, result.totalChargePercent)
 
+        // Deep sleep efficiency: 2400000ms / 3500000ms ≈ 68.6%
+        assertEquals(68.6, result.deepSleepEfficiencyPercent, 0.05)
+
         // Culprit verification: Social app should have accumulated wakelocks and wakeups
         val culprit = result.topCulprits.find { it.uid == 10182 }
         assertNotNull(culprit)

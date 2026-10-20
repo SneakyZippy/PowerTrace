@@ -21,6 +21,9 @@ interface ContinuousSnapshotDao {
     @Query("SELECT id, timestampMs, batteryLevel, voltageMv, tempDeciCelsius, isCharging, isScreenOn, totalRealtimeMs, totalUptimeMs, screenOnDurationMs, screenOffDurationMs FROM periodic_snapshots WHERE timestampMs >= :sinceMs ORDER BY timestampMs ASC")
     suspend fun getLightweightSnapshotsSince(sinceMs: Long): List<LightweightSnapshot>
 
+    @Query("SELECT id, timestampMs, batteryLevel, voltageMv, tempDeciCelsius, isCharging, isScreenOn, totalRealtimeMs, totalUptimeMs, screenOnDurationMs, screenOffDurationMs FROM periodic_snapshots ORDER BY timestampMs ASC")
+    suspend fun getAllLightweightSnapshots(): List<LightweightSnapshot>
+
     @Query("SELECT * FROM periodic_snapshots WHERE id IN (:ids)")
     suspend fun getSnapshotsByIds(ids: List<Long>): List<PeriodicSnapshotEntity>
 

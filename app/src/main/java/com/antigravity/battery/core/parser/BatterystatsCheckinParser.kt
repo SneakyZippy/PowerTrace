@@ -139,12 +139,29 @@ class BatterystatsCheckinParser {
                 }
 
                 // UID-level Wi-Fi scan: 'wfl'
+                // In modern AOSP checkin format:
+                // parts[4] = fullWifiLockTime (microseconds)
+                // parts[5] = scanWifiTime (microseconds)
+                // parts[6] = runningWifiTime (microseconds)
+                // parts[7] = scanWifiCount
+                // In legacy checkin format:
+                // parts[4] = scanCount, parts[5] = runningMs
                 section == "wfl" && parts.size >= 5 -> {
-                    val wifiScanCount = parts[4].toIntOrNull() ?: 0
-                    val wifiRunningMs = parts.getOrNull(5)?.toLongOrNull() ?: 0L
                     val stat = uidMetricsBuilder.getOrPut(uid) { MutableUidStat(uid) }
-                    stat.wifiScanCount += wifiScanCount
-                    stat.wifiRunningMs += wifiRunningMs
+                    if (parts.size >= 8) {
+                        val fullLockUs = parts.getOrNull(4)?.toLongOrNull() ?: 0L
+                        val runningUs = parts.getOrNull(6)?.toLongOrNull() ?: 0L
+                        val scanCount = parts.getOrNull(7)?.toIntOrNull() ?: 0
+
+                        stat.wifiScanCount += scanCount
+                        val runningMs = if (runningUs > 0) runningUs / 1000L else if (fullLockUs > 0) fullLockUs / 1000L else 0L
+                        stat.wifiRunningMs += runningMs
+                    } else {
+                        val wifiScanCount = parts[4].toIntOrNull() ?: 0
+                        val wifiRunningMs = parts.getOrNull(5)?.toLongOrNull() ?: 0L
+                        stat.wifiScanCount += wifiScanCount
+                        stat.wifiRunningMs += wifiRunningMs
+                    }
                 }
 
                 // UID-level GPS: 'gprs'
@@ -167,21 +184,34 @@ class BatterystatsCheckinParser {
     }
 
     private fun parseBatterySection(parts: List<String>, nowMs: Long): DeviceLevelMetrics {
-        // Handle which parameter offset if parts[4] is short (0, 7 etc.)
-        val isWhichOffset = (parts.getOrNull(4)?.length ?: 0) <= 2
-        val realtimeIndex = if (isWhichOffset) 5 else 4
-        val uptimeIndex = if (isWhichOffset) 6 else 5
-        val screenOffIndex = if (isWhichOffset) 9 else 6
+        // In modern AOSP checkin format:
+        // 9,0,l,bt,startCount,batteryRealtime,batteryUptime,totalRealtime,totalUptime,startClockTime,screenOnTime,screenDozeTime,capacityMah,...
+        // If parts[4] is startCount (length <= 4 and parts.size >= 11):
+        val isModernBt = (parts.getOrNull(4)?.length ?: 0) <= 4 && parts.size >= 11
 
-        val realtimeRaw = parts.getOrNull(realtimeIndex)?.toLongOrNull() ?: 0L
-        val uptimeRaw = parts.getOrNull(uptimeIndex)?.toLongOrNull() ?: 0L
+        val realtimeMs: Long
+        val uptimeMs: Long
+        val screenOnDurationMs: Long
+        val screenOffDurationMs: Long
 
-        val realtimeMs = if (realtimeRaw > 100_000_000_000L) realtimeRaw / 1000L else realtimeRaw
-        val uptimeMs = if (uptimeRaw > 100_000_000_000L) uptimeRaw / 1000L else uptimeRaw
+        if (isModernBt) {
+            val batRealtimeRaw = parts.getOrNull(5)?.toLongOrNull() ?: 0L
+            val batUptimeRaw = parts.getOrNull(6)?.toLongOrNull() ?: 0L
+            realtimeMs = if (batRealtimeRaw > 100_000_000_000L) batRealtimeRaw / 1000L else batRealtimeRaw
+            uptimeMs = if (batUptimeRaw > 100_000_000_000L) batUptimeRaw / 1000L else batUptimeRaw
 
-        val screenOffRaw = parts.getOrNull(screenOffIndex)?.toLongOrNull() ?: 0L
-        val screenOffDurationMs = if (screenOffRaw > 100_000_000_000L) screenOffRaw / 1000L else screenOffRaw
-        val screenOnDurationMs = (realtimeMs - screenOffDurationMs).coerceAtLeast(0L)
+            val sotRaw = parts.getOrNull(10)?.toLongOrNull() ?: 0L
+            screenOnDurationMs = if (sotRaw > 100_000_000_000L) sotRaw / 1000L else sotRaw
+            screenOffDurationMs = (realtimeMs - screenOnDurationMs).coerceAtLeast(0L)
+        } else {
+            val realtimeRaw = parts.getOrNull(4)?.toLongOrNull() ?: 0L
+            val uptimeRaw = parts.getOrNull(5)?.toLongOrNull() ?: 0L
+            realtimeMs = if (realtimeRaw > 100_000_000_000L) realtimeRaw / 1000L else realtimeRaw
+            uptimeMs = if (uptimeRaw > 100_000_000_000L) uptimeRaw / 1000L else uptimeRaw
+            val screenOffRaw = parts.getOrNull(6)?.toLongOrNull() ?: 0L
+            screenOffDurationMs = if (screenOffRaw > 100_000_000_000L) screenOffRaw / 1000L else screenOffRaw
+            screenOnDurationMs = (realtimeMs - screenOffDurationMs).coerceAtLeast(0L)
+        }
 
         // Try extracting battery level, voltage, temp
         val currentBatteryLevel = parts.getOrNull(11)?.toIntOrNull()

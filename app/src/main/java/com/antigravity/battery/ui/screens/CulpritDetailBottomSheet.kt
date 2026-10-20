@@ -202,17 +202,25 @@ fun CulpritDetailBottomSheet(
                         }
                     }
 
-                    // System App Info 1-tap shortcut (for non-kernel packages)
+                    // System App Battery Usage 1-tap shortcut (for non-kernel packages)
                     if (culprit.primaryPackageName.isNotEmpty() && !culprit.primaryPackageName.startsWith("android.kernel")) {
                         OutlinedButton(
                             onClick = {
                                 try {
-                                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                        data = Uri.fromParts("package", culprit.primaryPackageName, null)
+                                    val intent = Intent("android.settings.APP_BATTERY_USAGE").apply {
+                                        data = Uri.parse("package:${culprit.primaryPackageName}")
                                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                     }
                                     context.startActivity(intent)
-                                } catch (_: Exception) {}
+                                } catch (_: Exception) {
+                                    try {
+                                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                            data = Uri.fromParts("package", culprit.primaryPackageName, null)
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) {}
+                                }
                             },
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
@@ -226,7 +234,7 @@ fun CulpritDetailBottomSheet(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "App Info",
+                                text = "Battery Usage",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = AccentBlue

@@ -19,6 +19,7 @@ data class PermissionState(
     val isBatteryStatsGranted: Boolean,
     val isDumpGranted: Boolean,
     val isPackageUsageStatsGranted: Boolean,
+    val isInteractAcrossUsersGranted: Boolean = true,
     val areAllRequiredGranted: Boolean,
     val statuses: List<PermissionStatus>,
     val fullAdbScript: String,
@@ -41,6 +42,9 @@ class PermissionManager(private val context: Context) {
 
         val usageStatsGranted = checkUsageStatsPermission()
 
+        val interactAcrossUsersGranted = context.checkSelfPermission("android.permission.INTERACT_ACROSS_USERS") ==
+                PackageManager.PERMISSION_GRANTED
+
         val statuses = listOf(
             PermissionStatus(
                 permission = "android.permission.BATTERY_STATS",
@@ -60,6 +64,12 @@ class PermissionManager(private val context: Context) {
                 description = "Required to correlate background app states and screen-off intervals. Can be granted via Settings or ADB.",
                 adbCommand = "adb shell pm grant $packageName android.permission.PACKAGE_USAGE_STATS\nadb shell appops set $packageName GET_USAGE_STATS allow",
                 settingsAction = android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS
+            ),
+            PermissionStatus(
+                permission = "android.permission.INTERACT_ACROSS_USERS",
+                isGranted = interactAcrossUsersGranted,
+                description = "Required to query per-app batterystats across Android multi-user profiles without security exceptions.",
+                adbCommand = "adb shell pm grant $packageName android.permission.INTERACT_ACROSS_USERS"
             )
         )
 
@@ -67,16 +77,18 @@ class PermissionManager(private val context: Context) {
             adb shell pm grant $packageName android.permission.BATTERY_STATS
             adb shell pm grant $packageName android.permission.DUMP
             adb shell pm grant $packageName android.permission.PACKAGE_USAGE_STATS
+            adb shell pm grant $packageName android.permission.INTERACT_ACROSS_USERS
             adb shell appops set $packageName GET_USAGE_STATS allow
         """.trimIndent()
 
-        val singleLineCmd = "adb shell \"pm grant $packageName android.permission.BATTERY_STATS; pm grant $packageName android.permission.DUMP; pm grant $packageName android.permission.PACKAGE_USAGE_STATS; appops set $packageName GET_USAGE_STATS allow\""
+        val singleLineCmd = "adb shell \"pm grant $packageName android.permission.BATTERY_STATS; pm grant $packageName android.permission.DUMP; pm grant $packageName android.permission.PACKAGE_USAGE_STATS; pm grant $packageName android.permission.INTERACT_ACROSS_USERS; appops set $packageName GET_USAGE_STATS allow\""
 
         return PermissionState(
             isBatteryStatsGranted = batteryStatsGranted,
             isDumpGranted = dumpGranted,
             isPackageUsageStatsGranted = usageStatsGranted,
-            areAllRequiredGranted = batteryStatsGranted && dumpGranted && usageStatsGranted,
+            isInteractAcrossUsersGranted = interactAcrossUsersGranted,
+            areAllRequiredGranted = batteryStatsGranted && dumpGranted && usageStatsGranted && interactAcrossUsersGranted,
             statuses = statuses,
             fullAdbScript = fullScript,
             singleLineAdbCommand = singleLineCmd

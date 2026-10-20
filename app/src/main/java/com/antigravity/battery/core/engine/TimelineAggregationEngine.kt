@@ -193,9 +193,12 @@ class TimelineAggregationEngine(
                 totalDischargeDurationMs += deltaDuration
 
                 // Hardware sleep states
-                val deltaRealtime = (next.totalRealtimeMs - curr.totalRealtimeMs).coerceAtLeast(0L)
-                val deltaUptime = (next.totalUptimeMs - curr.totalUptimeMs).coerceAtLeast(0L)
-                val deltaScreenOn = (next.screenOnDurationMs - curr.screenOnDurationMs).coerceAtLeast(0L)
+                val rawDeltaRealtime = (next.totalRealtimeMs - curr.totalRealtimeMs).coerceAtLeast(0L)
+                val deltaRealtime = if (deltaDuration > 0L && rawDeltaRealtime > deltaDuration) deltaDuration else rawDeltaRealtime
+                val rawDeltaUptime = (next.totalUptimeMs - curr.totalUptimeMs).coerceAtLeast(0L)
+                val deltaUptime = rawDeltaUptime.coerceAtMost(deltaRealtime)
+                val rawDeltaScreenOn = (next.screenOnDurationMs - curr.screenOnDurationMs).coerceAtLeast(0L)
+                val deltaScreenOn = rawDeltaScreenOn.coerceAtMost(deltaRealtime)
 
                 totalScreenOnMs += deltaScreenOn
                 val sliceDeepSleep = (deltaRealtime - deltaUptime).coerceAtLeast(0L)
@@ -237,9 +240,9 @@ class TimelineAggregationEngine(
         val dischargeHours = (totalDischargeDurationMs.toDouble() / 3_600_000.0).coerceAtLeast(0.01)
         val drainRatePerHour = ((totalDischargeDrop / dischargeHours) * 100.0).roundToInt() / 100.0
 
-        val screenOffMs = (totalDischargeDurationMs - totalScreenOnMs).coerceAtLeast(0L)
-        val sleepEfficiency = if (screenOffMs > 0) {
-            ((totalDeepSleepMs.toDouble() / screenOffMs.toDouble()) * 100.0).coerceIn(0.0, 100.0)
+        val screenOffHardwareMs = totalDeepSleepMs + totalAwakeScreenOffMs
+        val sleepEfficiency = if (screenOffHardwareMs > 0L) {
+            ((totalDeepSleepMs.toDouble() / screenOffHardwareMs.toDouble()) * 100.0).coerceIn(0.0, 100.0)
         } else 100.0
 
         // Build culprit list from aggregated deltas
@@ -275,7 +278,7 @@ class TimelineAggregationEngine(
                 deltaUid = uidMetric,
                 wakeupAlarms = wakeups,
                 sessionDurationMs = totalDischargeDurationMs,
-                isScreenOffDominant = screenOffMs > totalScreenOnMs
+                isScreenOffDominant = screenOffHardwareMs > totalScreenOnMs
             )
 
             culpritsList.add(
@@ -357,10 +360,11 @@ class TimelineAggregationEngine(
 
             val dMobRx = (n.mobileBytesRx - c.mobileBytesRx).coerceAtLeast(0L)
             val dMobTx = (n.mobileBytesTx - c.mobileBytesTx).coerceAtLeast(0L)
-            val dWifiScans = (n.wifiScanCount - c.wifiScanCount).coerceAtLeast(0)
+            val rawWifiScans = (n.wifiScanCount - c.wifiScanCount).coerceAtLeast(0)
+            val dWifiScans = (if (rawWifiScans > 50) minOf((rawWifiScans / 1_000_000L).toInt(), 10) else rawWifiScans).coerceIn(0, 10)
 
             val rawWifiRun = (n.wifiRunningMs - c.wifiRunningMs).coerceAtLeast(0L)
-            val dWifiRun = rawWifiRun.coerceAtMost(maxHardwareMs)
+            val dWifiRun = (if (rawWifiRun > maxHardwareMs * 500) rawWifiRun / 1000L else rawWifiRun).coerceIn(0L, maxHardwareMs)
 
             val dWifiRx = (n.wifiBytesRx - c.wifiBytesRx).coerceAtLeast(0L)
             val dWifiTx = (n.wifiBytesTx - c.wifiBytesTx).coerceAtLeast(0L)

@@ -41,10 +41,12 @@ class EnergyAttributionModel(
         // 3. Mobile Radio Active Energy
         val radioMah = ((deltaUid.mobileRadioActiveMs.coerceAtLeast(0L)) / MS_PER_HOUR) * powerProfile.radioActiveMa
 
-        // 4. Wi-Fi Energy (Scans + active hold)
-        val wifiScanMah = ((deltaUid.wifiScanCount * ESTIMATED_WIFI_SCAN_DURATION_MS) / MS_PER_HOUR) * powerProfile.wifiScanMa
-        val wifiRunningMah = ((deltaUid.wifiRunningMs.coerceAtLeast(0L)) / MS_PER_HOUR) * powerProfile.wifiActiveMa
-        val wifiMah = wifiScanMah + wifiRunningMah
+        // 4. Wi-Fi Energy: RF transceiver data traffic + active throttled scans
+        val totalWifiBytes = (deltaUid.wifiBytesRx + deltaUid.wifiBytesTx).coerceAtLeast(0L)
+        val wifiDataMah = (totalWifiBytes.toDouble() / (1024.0 * 1024.0)) * 0.015
+        val clampedWifiScans = deltaUid.wifiScanCount.coerceIn(0, 25)
+        val wifiScanMah = ((clampedWifiScans * ESTIMATED_WIFI_SCAN_DURATION_MS) / MS_PER_HOUR) * powerProfile.wifiScanMa
+        val wifiMah = wifiDataMah + wifiScanMah
 
         // 5. GPS Sensor Energy
         val gpsMah = ((deltaUid.gpsDurationMs.coerceAtLeast(0L)) / MS_PER_HOUR) * powerProfile.gpsActiveMa
