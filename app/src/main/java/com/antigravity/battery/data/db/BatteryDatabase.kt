@@ -9,15 +9,20 @@ import androidx.room.RoomDatabase
     entities = [
         SessionEntity::class,
         PeriodicSnapshotEntity::class,
-        DailyRollupEntity::class
+        DailyRollupEntity::class,
+        PowerBrickEntity::class,
+        CableEntity::class,
+        ChargeTestSessionEntity::class,
+        ChargeSampleEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class BatteryDatabase : RoomDatabase() {
 
     abstract fun sessionDao(): SessionDao
     abstract fun continuousSnapshotDao(): ContinuousSnapshotDao
+    abstract fun accessoryDao(): AccessoryDao
 
     companion object {
         @Volatile

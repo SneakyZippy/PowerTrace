@@ -66,13 +66,17 @@
 
         <receiver
             android:name=".service.SessionTriggerReceiver"
-            android:exported="false">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.USER_PRESENT" />
                 <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
                 <action android:name="android.intent.action.ACTION_POWER_DISCONNECTED" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".service.DismissNotificationReceiver"
+            android:exported="false" />
 
         <!-- Automatically resume 24/7 background telemetry after device restart -->
         <receiver

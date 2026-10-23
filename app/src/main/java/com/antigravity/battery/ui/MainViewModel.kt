@@ -38,13 +38,22 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import com.antigravity.battery.core.engine.AnalyticsEngine
+import com.antigravity.battery.core.engine.ChargingBenchmarkManager
+import com.antigravity.battery.core.model.Cable
+import com.antigravity.battery.core.model.ChargeTelemetrySample
+import com.antigravity.battery.core.model.ChargeTestSession
+import com.antigravity.battery.core.model.LiveChargeTelemetry
 import com.antigravity.battery.core.model.OverallAnalytics
+import com.antigravity.battery.core.model.PowerBrick
+import com.antigravity.battery.data.repository.AccessoryRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import java.util.Calendar
 import java.util.UUID
 
 enum class AppNavTab {
     OVERVIEW,
+    ACCESSORIES,
     ANALYTICS,
     SETTINGS,
     SETUP
@@ -60,6 +69,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val database = BatteryDatabase.getInstance(application)
     private val continuousDao = database.continuousSnapshotDao()
     private val repository = BatterySessionRepository(database)
+    private val accessoryRepo = AccessoryRepository(database.accessoryDao())
+    val chargingBenchmarkManager = ChargingBenchmarkManager.getInstance(application)
+
+    val powerBricks: StateFlow<List<PowerBrick>> = accessoryRepo.powerBricks
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val cables: StateFlow<List<Cable>> = accessoryRepo.cables
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val chargingSessions: StateFlow<List<ChargeTestSession>> = accessoryRepo.sessions
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val liveChargingTelemetry: StateFlow<LiveChargeTelemetry> = chargingBenchmarkManager.liveTelemetry
+    val pendingCompletedSession: StateFlow<Pair<ChargeTestSession, List<ChargeTelemetrySample>>?> = chargingBenchmarkManager.pendingCompletedSession
+
+    private val _isAutoPromptEnabled = MutableStateFlow(chargingBenchmarkManager.isAutoPromptEnabled())
+    val isAutoPromptEnabled: StateFlow<Boolean> = _isAutoPromptEnabled.asStateFlow()
+
+    private val _minDurationMinutes = MutableStateFlow(chargingBenchmarkManager.getMinDurationMinutes())
+    val minDurationMinutes: StateFlow<Int> = _minDurationMinutes.asStateFlow()
+
+    private val _minBatteryGain = MutableStateFlow(chargingBenchmarkManager.getMinBatteryGain())
+    val minBatteryGain: StateFlow<Int> = _minBatteryGain.asStateFlow()
 
     private val binderSource = BinderDumpSource(application)
     private val mockSource = MockDiagnosticDumpSource()
@@ -531,5 +563,96 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 delay(1000L)
             }
         }
+    }
+
+    // --- Accessory & Charging Benchmark Actions ---
+
+    fun savePowerBrick(brick: PowerBrick) {
+        viewModelScope.launch {
+            accessoryRepo.saveBrick(brick)
+        }
+    }
+
+    fun deletePowerBrick(brick: PowerBrick) {
+        viewModelScope.launch {
+            accessoryRepo.deleteBrick(brick)
+        }
+    }
+
+    fun saveCable(cable: Cable) {
+        viewModelScope.launch {
+            accessoryRepo.saveCable(cable)
+        }
+    }
+
+    fun deleteCable(cable: Cable) {
+        viewModelScope.launch {
+            accessoryRepo.deleteCable(cable)
+        }
+    }
+
+    fun saveChargingSession(
+        brickId: String?,
+        cableId: String?,
+        brickName: String,
+        cableName: String,
+        notes: String = ""
+    ) {
+        chargingBenchmarkManager.saveCompletedSession(
+            brickId = brickId,
+            cableId = cableId,
+            brickName = brickName,
+            cableName = cableName,
+            notes = notes
+        )
+    }
+
+    fun deleteChargingSession(session: ChargeTestSession) {
+        viewModelScope.launch {
+            accessoryRepo.deleteSession(session)
+        }
+    }
+
+    fun clearPendingSession() {
+        chargingBenchmarkManager.clearPendingSession()
+    }
+
+    fun setPendingSessionManual(session: ChargeTestSession, samples: List<ChargeTelemetrySample> = emptyList()) {
+        chargingBenchmarkManager.setPendingSession(session, samples)
+    }
+
+    fun simulateChargingTest(onComplete: () -> Unit = {}) {
+        chargingBenchmarkManager.simulateMockChargeSession(onComplete)
+    }
+
+    fun toggleAutoPromptEnabled(enabled: Boolean) {
+        chargingBenchmarkManager.setAutoPromptEnabled(enabled)
+        _isAutoPromptEnabled.value = enabled
+    }
+
+    fun getSamplesForSession(sessionId: String): Flow<List<ChargeTelemetrySample>> {
+        return accessoryRepo.getSamplesForSession(sessionId)
+    }
+
+    fun startChargingPolling() {
+        chargingBenchmarkManager.startPolling()
+    }
+
+    fun stopChargingPolling() {
+        if (!chargingBenchmarkManager.liveTelemetry.value.isCharging) {
+            chargingBenchmarkManager.stopPolling()
+        }
+    }
+
+    fun updateMinDurationMinutes(minutes: Int) {
+        val clamped = minutes.coerceIn(1, 60)
+        chargingBenchmarkManager.setMinDurationMinutes(clamped)
+        _minDurationMinutes.value = clamped
+    }
+
+    fun updateMinBatteryGain(gain: Int) {
+        val clamped = gain.coerceIn(1, 50)
+        chargingBenchmarkManager.setMinBatteryGain(clamped)
+        _minBatteryGain.value = clamped
     }
 }

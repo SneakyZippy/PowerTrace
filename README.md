@@ -36,6 +36,7 @@ Get the latest build directly from GitHub:
 - **Power Profile Attribution**: Estimates energy use (mAh) based on your device's OEM power profile hardware coefficients.
 - **Auto-Stop Triggers**: Optionally end sessions automatically when you unlock the device or plug it into a charger.
 - **Continuous Monitoring**: An optional background service to track periodic intervals throughout the day.
+- **Charger & Cable Benchmarking**: Measure real-time charging wattage, voltage, current, and thermal curves. Catalog your power bricks and USB cables separately to compare combinations and spot bottlenecked cables. Smart post-unplug notification prompts you to tag and save sessions.
 - **Diagnostics Export**: Export session snapshots as JSON or raw diagnostic checkins for debugging and bug reports.
 - **Mock Diagnostic Mode**: Includes a built-in mock telemetry source so developers can inspect and test the UI without configuring ADB permissions.
 
