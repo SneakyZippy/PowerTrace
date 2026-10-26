@@ -90,6 +90,16 @@ class AccessoryRepository(private val accessoryDao: AccessoryDao) {
                     notes = "Multi-port USB-PD GaN brick"
                 )
             )
+            accessoryDao.insertBrick(
+                PowerBrickEntity(
+                    id = "preset_wireless_pad",
+                    name = "Wireless Charging Pad / Stand",
+                    manufacturer = "Generic",
+                    ratedWattage = 15f,
+                    portType = "Wireless Qi",
+                    notes = "Qi / Pixel Stand wireless charging dock"
+                )
+            )
         }
 
         val existingCables = accessoryDao.getAllCables().first()
@@ -114,6 +124,17 @@ class AccessoryRepository(private val accessoryDao: AccessoryDao) {
                     lengthMeters = 2.0f,
                     cableType = "Type-C to Type-C E-Marker",
                     notes = "Heavy-duty 2m cable"
+                )
+            )
+            accessoryDao.insertCable(
+                CableEntity(
+                    id = "preset_wireless_direct",
+                    name = "Direct (Wireless / Integrated)",
+                    manufacturer = "N/A",
+                    ratedWattage = 15f,
+                    lengthMeters = 0.0f,
+                    cableType = "Wireless Qi",
+                    notes = "Direct wireless coil connection, no external cable"
                 )
             )
         }

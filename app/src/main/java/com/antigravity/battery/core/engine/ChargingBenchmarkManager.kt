@@ -148,7 +148,8 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         val plugged = batteryStatus?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: -1
         lastKnownPlugged = plugged == BatteryManager.BATTERY_PLUGGED_AC ||
                 plugged == BatteryManager.BATTERY_PLUGGED_USB ||
-                plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS
+                plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS ||
+                (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && plugged == BatteryManager.BATTERY_PLUGGED_DOCK)
 
         if (lastKnownPlugged) {
             startSession()
@@ -575,7 +576,8 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
 
         val isPlugged = plugged == BatteryManager.BATTERY_PLUGGED_AC ||
                 plugged == BatteryManager.BATTERY_PLUGGED_USB ||
-                plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS
+                plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS ||
+                (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && plugged == BatteryManager.BATTERY_PLUGGED_DOCK)
 
         val isCharging = isPlugged && (status == BatteryManager.BATTERY_STATUS_CHARGING ||
                 status == BatteryManager.BATTERY_STATUS_FULL)
@@ -588,10 +590,11 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
             return
         }
 
-        val plugType = when (plugged) {
-            BatteryManager.BATTERY_PLUGGED_AC -> "AC Wall Charger"
-            BatteryManager.BATTERY_PLUGGED_USB -> "USB Port"
-            BatteryManager.BATTERY_PLUGGED_WIRELESS -> "Wireless Dock"
+        val plugType = when {
+            plugged == BatteryManager.BATTERY_PLUGGED_AC -> "AC Wall Charger"
+            plugged == BatteryManager.BATTERY_PLUGGED_USB -> "USB Port"
+            plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS -> "Wireless Qi Pad"
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && plugged == BatteryManager.BATTERY_PLUGGED_DOCK -> "Pixel Stand / Dock"
             else -> if (isCharging) "Charging" else "Unplugged"
         }
 
