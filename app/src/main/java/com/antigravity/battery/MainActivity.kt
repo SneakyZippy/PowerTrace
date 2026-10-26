@@ -117,7 +117,6 @@ class MainActivity : ComponentActivity() {
                 val reconnectPrompt by viewModel.reconnectPrompt.collectAsState()
 
                 val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-                val tagSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
@@ -220,18 +219,19 @@ class MainActivity : ComponentActivity() {
 
                         // Tag Accessories Bottom Sheet (Triggered on Unplug or Simulation or Finish Test)
                         if (pendingSession != null) {
-                            TagAccessoriesBottomSheet(
-                                session = pendingSession!!.first,
-                                sheetState = tagSheetState,
-                                powerBricks = powerBricks,
-                                cables = cables,
-                                onSave = { brickId, cableId, brickName, cableName, notes ->
-                                    viewModel.saveChargingSession(brickId, cableId, brickName, cableName, notes)
-                                },
-                                onSaveNewBrick = { viewModel.savePowerBrick(it) },
-                                onSaveNewCable = { viewModel.saveCable(it) },
-                                onDismiss = { viewModel.clearPendingSession() }
-                            )
+                            androidx.compose.runtime.key(pendingSession!!.first.id) {
+                                TagAccessoriesBottomSheet(
+                                    session = pendingSession!!.first,
+                                    powerBricks = powerBricks,
+                                    cables = cables,
+                                    onSave = { brickId, cableId, brickName, cableName, notes ->
+                                        viewModel.saveChargingSession(brickId, cableId, brickName, cableName, notes)
+                                    },
+                                    onSaveNewBrick = { viewModel.savePowerBrick(it) },
+                                    onSaveNewCable = { viewModel.saveCable(it) },
+                                    onDismiss = { viewModel.clearPendingSession() }
+                                )
+                            }
                         }
 
                         // Reconnect Prompt Dialog (Triggered when reconnected within short disconnect grace period)
