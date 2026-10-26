@@ -261,6 +261,10 @@ class MainActivity : ComponentActivity() {
         } else if (intent.action == ChargingNotificationHelper.ACTION_OPEN_RECONNECT_DIALOG) {
             viewModel.setTab(AppNavTab.ACCESSORIES)
             ChargingNotificationHelper.cancelReconnectNotification(this)
+        } else if (intent.action == ChargingNotificationHelper.ACTION_FINISH_AND_TAG) {
+            viewModel.finalizePausedSessionNow()
+            viewModel.setTab(AppNavTab.ACCESSORIES)
+            ChargingNotificationHelper.cancelDisconnectGraceNotification(this)
         }
     }
 

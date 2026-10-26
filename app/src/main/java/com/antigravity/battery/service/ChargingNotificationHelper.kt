@@ -15,10 +15,12 @@ object ChargingNotificationHelper {
 
     const val CHANNEL_ID = "charging_benchmarks"
     const val NOTIFICATION_ID = 2001
+    const val NOTIFICATION_ID_DISCONNECT_GRACE = 2002
     const val NOTIFICATION_ID_RECONNECT = 2003
 
     const val ACTION_TAG_ACCESSORIES = "com.antigravity.battery.ACTION_TAG_ACCESSORIES"
     const val ACTION_OPEN_RECONNECT_DIALOG = "com.antigravity.battery.ACTION_OPEN_RECONNECT_DIALOG"
+    const val ACTION_FINISH_AND_TAG = "com.antigravity.battery.ACTION_FINISH_AND_TAG"
     const val EXTRA_SESSION_ID = "extra_session_id"
     const val EXTRA_PEAK_W = "extra_peak_w"
     const val EXTRA_AVG_W = "extra_avg_w"
@@ -99,6 +101,83 @@ object ChargingNotificationHelper {
     fun cancelNotification(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
         manager?.cancel(NOTIFICATION_ID)
+    }
+
+    fun showDisconnectGraceNotification(
+        context: Context,
+        session: ChargeTestSession,
+        remainingSeconds: Int
+    ) {
+        createNotificationChannel(context)
+
+        val durationMinutes = (session.durationMs / 60000).coerceAtLeast(1)
+        val batteryGain = session.batteryGained
+
+        // Tapping the notification body opens MainActivity, immediately finalizes grace period and opens the Tag sheet
+        val contentIntent = Intent(context, MainActivity::class.java).apply {
+            action = ACTION_FINISH_AND_TAG
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingContentIntent = PendingIntent.getActivity(
+            context,
+            NOTIFICATION_ID_DISCONNECT_GRACE,
+            contentIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Action: Save Now
+        val saveNowIntent = Intent(context, ChargingActionReceiver::class.java).apply {
+            action = ChargingActionReceiver.ACTION_FINISH_SESSION_NOW
+        }
+        val pendingSaveNowIntent = PendingIntent.getBroadcast(
+            context,
+            NOTIFICATION_ID_DISCONNECT_GRACE + 1,
+            saveNowIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Action: Discard
+        val discardIntent = Intent(context, ChargingActionReceiver::class.java).apply {
+            action = ChargingActionReceiver.ACTION_DISCARD_PAUSED_SESSION
+        }
+        val pendingDiscardIntent = PendingIntent.getBroadcast(
+            context,
+            NOTIFICATION_ID_DISCONNECT_GRACE + 2,
+            discardIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val title = "⚡ Charger Disconnected • Save Session?"
+        val body = String.format(
+            Locale.US,
+            "+%d%% in %dm (Peak %.1fW). Auto-resumes for %ds if reconnected. Tap to save now.",
+            batteryGain,
+            durationMinutes,
+            session.peakWattage,
+            remainingSeconds
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setTimeoutAfter(remainingSeconds * 1000L)
+            .setContentIntent(pendingContentIntent)
+            .addAction(R.mipmap.ic_launcher, "Save Now", pendingSaveNowIntent)
+            .addAction(R.mipmap.ic_launcher, "Discard", pendingDiscardIntent)
+            .setOnlyAlertOnce(true)
+            .build()
+
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        manager?.notify(NOTIFICATION_ID_DISCONNECT_GRACE, notification)
+    }
+
+    fun cancelDisconnectGraceNotification(context: Context) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        manager?.cancel(NOTIFICATION_ID_DISCONNECT_GRACE)
     }
 
     fun showReconnectPromptNotification(

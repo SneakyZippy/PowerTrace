@@ -183,6 +183,7 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         gracePeriodTimerJob?.cancel()
         gracePeriodTimerJob = null
         _isGracePeriodActive.value = false
+        ChargingNotificationHelper.cancelDisconnectGraceNotification(context)
 
         val paused = pausedSessionData
         val nowMs = System.currentTimeMillis()
@@ -310,6 +311,35 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         pausedSessionData = paused
         _isGracePeriodActive.value = true
 
+        val wasMeaningfulSession = paused.samples.size >= 5 && (paused.disconnectTimeMs - paused.startTimeMs) >= 15_000L
+        if (wasMeaningfulSession) {
+            val avgWattage = if (paused.sampleCount > 0) (paused.wattageSum / paused.sampleCount).toFloat() else paused.peakWattage
+            val tempSession = ChargeTestSession(
+                id = paused.sessionId,
+                brickId = paused.brickId,
+                cableId = paused.cableId,
+                brickName = paused.brickName,
+                cableName = paused.cableName,
+                startTimeMs = paused.startTimeMs,
+                endTimeMs = paused.disconnectTimeMs,
+                startBatteryLevel = paused.startBatteryLevel,
+                endBatteryLevel = paused.endBatteryLevel,
+                peakWattage = paused.peakWattage,
+                avgWattage = avgWattage,
+                minVoltageMv = if (paused.minVoltageMv == Int.MAX_VALUE) 0 else paused.minVoltageMv,
+                maxVoltageMv = paused.maxVoltageMv,
+                peakCurrentMa = paused.peakCurrentMa,
+                startTempDeciC = paused.startTempDeciC,
+                maxTempDeciC = paused.maxTempDeciC,
+                isThrottled = paused.isThrottled
+            )
+            ChargingNotificationHelper.showDisconnectGraceNotification(
+                context,
+                tempSession,
+                getDisconnectGraceSeconds()
+            )
+        }
+
         // Reset live ongoing session trackers so it's not marked as actively charging
         sessionStartTimeMs = 0L
         peakWattage = 0f
@@ -330,6 +360,7 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
             }
             if (isActive) {
                 // Grace window elapsed without reconnect: finalize previous session
+                ChargingNotificationHelper.cancelDisconnectGraceNotification(context)
                 finalizePausedSession()
             }
         }
@@ -343,6 +374,7 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         gracePeriodTimerJob?.cancel()
         gracePeriodTimerJob = null
         _isGracePeriodActive.value = false
+        ChargingNotificationHelper.cancelDisconnectGraceNotification(context)
 
         val paused = pausedSessionData ?: return null
         pausedSessionData = null
@@ -388,9 +420,26 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
     fun finalizePausedSessionNow() {
         promptAutoResumeJob?.cancel()
         promptAutoResumeJob = null
+        gracePeriodTimerJob?.cancel()
+        gracePeriodTimerJob = null
+        _isGracePeriodActive.value = false
+        ChargingNotificationHelper.cancelDisconnectGraceNotification(context)
         ChargingNotificationHelper.cancelReconnectNotification(context)
         _reconnectPrompt.value = null
         finalizePausedSession()
+    }
+
+    fun discardPausedSessionNow() {
+        promptAutoResumeJob?.cancel()
+        promptAutoResumeJob = null
+        gracePeriodTimerJob?.cancel()
+        gracePeriodTimerJob = null
+        _isGracePeriodActive.value = false
+        pausedSessionData = null
+        ChargingNotificationHelper.cancelDisconnectGraceNotification(context)
+        ChargingNotificationHelper.cancelReconnectNotification(context)
+        _reconnectPrompt.value = null
+        sampleCurrentState()
     }
 
     @Synchronized
@@ -526,6 +575,8 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
     fun clearPendingSession() {
         _pendingCompletedSession.value = null
         ChargingNotificationHelper.cancelNotification(context)
+        ChargingNotificationHelper.cancelDisconnectGraceNotification(context)
+        ChargingNotificationHelper.cancelReconnectNotification(context)
     }
 
     fun setPendingSession(session: ChargeTestSession, samples: List<ChargeTelemetrySample>) {
