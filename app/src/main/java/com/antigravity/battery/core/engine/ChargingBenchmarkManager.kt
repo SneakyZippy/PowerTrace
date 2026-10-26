@@ -445,6 +445,8 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
 
     @Synchronized
     fun startSession(brickId: String? = activeBrickId, cableId: String? = activeCableId) {
+        ChargingNotificationHelper.cancelNotification(context)
+        ChargingNotificationHelper.cancelReconnectNotification(context)
         activeBrickId = brickId
         activeCableId = cableId
         activeSessionId = UUID.randomUUID().toString()
@@ -523,6 +525,7 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
 
     fun clearPendingSession() {
         _pendingCompletedSession.value = null
+        ChargingNotificationHelper.cancelNotification(context)
     }
 
     fun setPendingSession(session: ChargeTestSession, samples: List<ChargeTelemetrySample>) {
@@ -536,6 +539,7 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         cableName: String,
         notes: String = ""
     ) {
+        ChargingNotificationHelper.cancelNotification(context)
         val pending = _pendingCompletedSession.value ?: return
         val updatedSession = pending.first.copy(
             brickId = brickId,
