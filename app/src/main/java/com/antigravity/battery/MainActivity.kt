@@ -149,6 +149,7 @@ class MainActivity : ComponentActivity() {
                                 onSaveCable = { viewModel.saveCable(it) },
                                 onDeleteCable = { viewModel.deleteCable(it) },
                                 onDeleteSession = { viewModel.deleteChargingSession(it) },
+                                onUpdateSession = { viewModel.updateChargingSession(it) },
                                 onManualTagSession = { viewModel.setPendingSessionManual(it) },
                                 onSimulateTest = { onComplete ->
                                     viewModel.simulateChargingTest(onComplete)

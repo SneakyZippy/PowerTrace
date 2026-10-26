@@ -622,6 +622,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateChargingSession(session: ChargeTestSession) {
+        viewModelScope.launch {
+            accessoryRepo.saveSession(session)
+        }
+    }
+
     fun clearPendingSession() {
         chargingBenchmarkManager.clearPendingSession()
     }

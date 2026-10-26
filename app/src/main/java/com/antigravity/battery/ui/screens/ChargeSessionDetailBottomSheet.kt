@@ -1,6 +1,7 @@
 package com.antigravity.battery.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,17 +17,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Thermostat
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -35,16 +37,21 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.antigravity.battery.core.model.Cable
 import com.antigravity.battery.core.model.ChargeTelemetrySample
 import com.antigravity.battery.core.model.ChargeTestSession
+import com.antigravity.battery.core.model.PowerBrick
 import com.antigravity.battery.ui.components.ChargeCurveChart
+import com.antigravity.battery.ui.components.EditChargeSessionDialog
 import com.antigravity.battery.ui.theme.AccentBlue
 import com.antigravity.battery.ui.theme.CulpritAmber
 import com.antigravity.battery.ui.theme.CulpritRed
@@ -65,12 +72,18 @@ fun ChargeSessionDetailBottomSheet(
     session: ChargeTestSession,
     sheetState: SheetState,
     samplesFlow: Flow<List<ChargeTelemetrySample>>,
+    powerBricks: List<PowerBrick> = emptyList(),
+    cables: List<Cable> = emptyList(),
+    onUpdateSession: (ChargeTestSession) -> Unit = {},
     onDelete: (ChargeTestSession) -> Unit,
     onDismiss: () -> Unit
 ) {
     val samples by samplesFlow.collectAsState(initial = emptyList())
+    var currentSession by remember(session) { mutableStateOf(session) }
+    var showEditDialog by remember { mutableStateOf(false) }
+
     val dateFormat = SimpleDateFormat("MMM dd, yyyy • HH:mm", Locale.getDefault())
-    val durationMin = (session.durationMs / 60000).coerceAtLeast(1)
+    val durationMin = (currentSession.durationMs / 60000).coerceAtLeast(1)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -103,17 +116,32 @@ fun ChargeSessionDetailBottomSheet(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            text = "${session.brickName} + ${session.cableName}",
+                            text = "${currentSession.brickName} + ${currentSession.cableName}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
                         )
                         Text(
-                            text = dateFormat.format(Date(session.startTimeMs)),
+                            text = dateFormat.format(Date(currentSession.startTimeMs)),
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )
                     }
+                }
+
+                IconButton(
+                    onClick = { showEditDialog = true },
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(DarkSurfaceVariant)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Edit details",
+                        tint = GreenPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
 
@@ -127,13 +155,13 @@ fun ChargeSessionDetailBottomSheet(
                 StatCard(
                     modifier = Modifier.weight(1f),
                     title = "PEAK POWER",
-                    value = String.format(Locale.US, "%.1f W", session.peakWattage),
+                    value = String.format(Locale.US, "%.1f W", currentSession.peakWattage),
                     color = GreenPrimary
                 )
                 StatCard(
                     modifier = Modifier.weight(1f),
                     title = "AVG POWER",
-                    value = String.format(Locale.US, "%.1f W", session.avgWattage),
+                    value = String.format(Locale.US, "%.1f W", currentSession.avgWattage),
                     color = TextPrimary
                 )
                 StatCard(
@@ -145,7 +173,7 @@ fun ChargeSessionDetailBottomSheet(
                 StatCard(
                     modifier = Modifier.weight(1f),
                     title = "GAIN",
-                    value = "+${session.batteryGained}%",
+                    value = "+${currentSession.batteryGained}%",
                     color = TextPrimary
                 )
             }
@@ -156,6 +184,85 @@ fun ChargeSessionDetailBottomSheet(
             ChargeCurveChart(samples = samples)
 
             Spacer(modifier = Modifier.height(16.dp))
+
+            // Notes & Environmental Conditions Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = DarkSurface)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Notes,
+                                contentDescription = null,
+                                tint = AccentBlue,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Notes & Conditions",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { showEditDialog = true },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Edit notes",
+                                tint = AccentBlue,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (currentSession.notes.isNotBlank()) {
+                        Text(
+                            text = currentSession.notes,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextPrimary,
+                            lineHeight = 20.sp
+                        )
+                    } else {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(DarkSurfaceVariant.copy(alpha = 0.5f))
+                                .clickable { showEditDialog = true }
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                tint = TextSecondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Add notes (e.g. cold room, gaming, screen off, case)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Additional Technical Specs Card
             Card(
@@ -174,28 +281,32 @@ fun ChargeSessionDetailBottomSheet(
 
                     DetailRow(
                         label = "Battery Range Tested",
-                        value = "${session.startBatteryLevel}% → ${session.endBatteryLevel}%"
+                        value = "${currentSession.startBatteryLevel}% → ${currentSession.endBatteryLevel}%"
                     )
                     DetailRow(
                         label = "Peak Charging Current",
-                        value = "${session.peakCurrentMa} mA (${String.format(Locale.US, "%.2f A", session.peakCurrentMa / 1000f)})"
+                        value = "${currentSession.peakCurrentMa} mA (${String.format(Locale.US, "%.2f A", currentSession.peakCurrentMa / 1000f)})"
                     )
                     DetailRow(
                         label = "Battery Cell Voltage Range",
-                        value = "${session.minVoltageMv} mV – ${session.maxVoltageMv} mV"
+                        value = "${currentSession.minVoltageMv} mV – ${currentSession.maxVoltageMv} mV"
                     )
                     DetailRow(
                         label = "Battery Temperature",
-                        value = "${String.format(Locale.US, "%.1f°C", session.startTempCelsius)} → ${String.format(Locale.US, "%.1f°C", session.maxTempCelsius)}"
+                        value = "${String.format(Locale.US, "%.1f°C", currentSession.startTempCelsius)} → ${String.format(Locale.US, "%.1f°C", currentSession.maxTempCelsius)}"
                     )
-
-                    if (session.notes.isNotBlank()) {
-                        DetailRow(label = "Session Notes", value = session.notes)
-                    }
+                    DetailRow(
+                        label = "Assigned Charger",
+                        value = currentSession.brickName
+                    )
+                    DetailRow(
+                        label = "Assigned Cable",
+                        value = currentSession.cableName
+                    )
                 }
             }
 
-            if (session.isThrottled) {
+            if (currentSession.isThrottled) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -220,19 +331,29 @@ fun ChargeSessionDetailBottomSheet(
             // Actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedButton(
                     onClick = {
-                        onDelete(session)
+                        onDelete(currentSession)
                         onDismiss()
                     },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = CulpritRed)
                 ) {
                     Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Delete Test")
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Delete")
+                }
+
+                OutlinedButton(
+                    onClick = { showEditDialog = true },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GreenPrimary)
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Edit")
                 }
 
                 OutlinedButton(
@@ -245,6 +366,19 @@ fun ChargeSessionDetailBottomSheet(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        if (showEditDialog) {
+            EditChargeSessionDialog(
+                session = currentSession,
+                powerBricks = powerBricks,
+                cables = cables,
+                onDismiss = { showEditDialog = false },
+                onSave = { updated ->
+                    currentSession = updated
+                    onUpdateSession(updated)
+                }
+            )
         }
     }
 }

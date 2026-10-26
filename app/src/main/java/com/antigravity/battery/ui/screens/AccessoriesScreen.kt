@@ -99,6 +99,7 @@ fun AccessoriesScreen(
     onSaveCable: (Cable) -> Unit,
     onDeleteCable: (Cable) -> Unit,
     onDeleteSession: (ChargeTestSession) -> Unit,
+    onUpdateSession: (ChargeTestSession) -> Unit = {},
     onManualTagSession: (ChargeTestSession) -> Unit,
     onSimulateTest: (onComplete: () -> Unit) -> Unit,
     onStartPolling: () -> Unit = {},
@@ -236,6 +237,12 @@ fun AccessoriesScreen(
                 session = selectedSessionForDetail!!,
                 sheetState = detailSheetState,
                 samplesFlow = getSamplesForSession(selectedSessionForDetail!!.id),
+                powerBricks = powerBricks,
+                cables = cables,
+                onUpdateSession = { updated ->
+                    selectedSessionForDetail = updated
+                    onUpdateSession(updated)
+                },
                 onDelete = {
                     onDeleteSession(it)
                     selectedSessionForDetail = null
@@ -1184,6 +1191,17 @@ private fun LeaderboardTab(
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
+                        }
+
+                        if (session.notes.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "📝 ${session.notes}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
                         }
 
                         if (session.isThrottled) {
