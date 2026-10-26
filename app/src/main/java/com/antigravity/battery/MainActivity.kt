@@ -122,10 +122,12 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     containerColor = DarkBackground,
                     bottomBar = {
-                        AppBottomNavigation(
-                            currentTab = currentTab,
-                            onTabSelected = { viewModel.setTab(it) }
-                        )
+                        if (currentTab != AppNavTab.SETUP) {
+                            AppBottomNavigation(
+                                currentTab = currentTab,
+                                onTabSelected = { viewModel.setTab(it) }
+                            )
+                        }
                     }
                 ) { innerPadding ->
                     Box(modifier = Modifier.padding(innerPadding)) {
@@ -136,7 +138,9 @@ class MainActivity : ComponentActivity() {
                                 isContinuousEnabled = isContinuousEnabled,
                                 onToggleContinuous = { viewModel.toggleContinuousTracking(it) },
                                 onSelectFilter = { viewModel.setTimeFilter(it) },
-                                onSelectCulprit = { viewModel.selectCulprit(it) }
+                                onSelectCulprit = { viewModel.selectCulprit(it) },
+                                permissionState = permissionState,
+                                onOpenSetup = { viewModel.setTab(AppNavTab.SETUP) }
                             )
                             AppNavTab.ACCESSORIES -> AccessoriesScreen(
                                 liveTelemetry = liveTelemetry,
@@ -189,13 +193,18 @@ class MainActivity : ComponentActivity() {
                                     isDisconnectGraceEnabled = isDisconnectGraceEnabled,
                                     onToggleDisconnectGrace = { viewModel.toggleDisconnectGraceEnabled(it) },
                                     disconnectGraceSeconds = disconnectGraceSeconds,
-                                    onUpdateDisconnectGraceSeconds = { viewModel.updateDisconnectGraceSeconds(it) }
+                                    onUpdateDisconnectGraceSeconds = { viewModel.updateDisconnectGraceSeconds(it) },
+                                    permissionState = permissionState,
+                                    onOpenSetup = { viewModel.setTab(AppNavTab.SETUP) }
                                 )
                             }
                             AppNavTab.SETUP -> SetupScreen(
                                 permissionState = permissionState,
                                 onRefreshPermissions = { viewModel.refreshPermissions() },
-                                onContinueToSessions = { viewModel.setTab(AppNavTab.OVERVIEW) }
+                                onContinueToSessions = { viewModel.setTab(AppNavTab.OVERVIEW) },
+                                onBack = if (permissionState.areAllRequiredGranted) {
+                                    { viewModel.setTab(AppNavTab.SETTINGS) }
+                                } else null
                             )
                         }
 
@@ -309,13 +318,6 @@ private fun AppBottomNavigation(
             icon = Icons.Default.Settings,
             isSelected = currentTab == AppNavTab.SETTINGS,
             onClick = { onTabSelected(AppNavTab.SETTINGS) }
-        )
-        NavTabItem(
-            tab = AppNavTab.SETUP,
-            label = "Setup",
-            icon = Icons.Default.Security,
-            isSelected = currentTab == AppNavTab.SETUP,
-            onClick = { onTabSelected(AppNavTab.SETUP) }
         )
     }
 }

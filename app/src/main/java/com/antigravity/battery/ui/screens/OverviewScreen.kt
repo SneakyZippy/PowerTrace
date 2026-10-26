@@ -59,7 +59,9 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.ExperimentalMaterial3Api
+import com.antigravity.battery.core.permission.PermissionState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
@@ -97,7 +99,9 @@ fun OverviewScreen(
     isContinuousEnabled: Boolean,
     onToggleContinuous: (Boolean) -> Unit,
     onSelectFilter: (TimeWindowFilter) -> Unit,
-    onSelectCulprit: (CulpritApp) -> Unit
+    onSelectCulprit: (CulpritApp) -> Unit,
+    permissionState: PermissionState? = null,
+    onOpenSetup: () -> Unit = {}
 ) {
     var activeExplanation by remember { mutableStateOf<MetricExplanation?>(null) }
     var isGuideOpen by remember { mutableStateOf(false) }
@@ -184,6 +188,52 @@ fun OverviewScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+                        }
+                    }
+                }
+            }
+
+            if (permissionState != null && !permissionState.areAllRequiredGranted) {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpenSetup() },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = CulpritAmber.copy(alpha = 0.15f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = CulpritAmber,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Elevated ADB Permissions Missing",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = CulpritAmber
+                                )
+                                Text(
+                                    "Wakelock telemetry reading is restricted. Tap to configure.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary
+                                )
+                            }
+                            Icon(
+                                Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = CulpritAmber,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
                     }
                 }

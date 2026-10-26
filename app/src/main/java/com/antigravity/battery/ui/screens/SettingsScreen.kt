@@ -19,14 +19,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import com.antigravity.battery.core.model.PowerProfileData
+import com.antigravity.battery.core.permission.PermissionState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -99,7 +103,9 @@ fun SettingsScreen(
     isDisconnectGraceEnabled: Boolean = true,
     onToggleDisconnectGrace: (Boolean) -> Unit = {},
     disconnectGraceSeconds: Int = 60,
-    onUpdateDisconnectGraceSeconds: (Int) -> Unit = {}
+    onUpdateDisconnectGraceSeconds: (Int) -> Unit = {},
+    permissionState: PermissionState? = null,
+    onOpenSetup: () -> Unit = {}
 ) {
     var isAdvancedExpanded by remember { mutableStateOf(false) }
     var isGuideOpen by remember { mutableStateOf(false) }
@@ -122,6 +128,81 @@ fun SettingsScreen(
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // ADB Privileges & Permissions Setup Card
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onOpenSetup() },
+            colors = CardDefaults.cardColors(containerColor = DarkSurface),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    val allGranted = permissionState?.areAllRequiredGranted == true
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (allGranted) GreenPrimary.copy(alpha = 0.15f)
+                                else CulpritAmber.copy(alpha = 0.15f)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (allGranted) Icons.Default.CheckCircle else Icons.Default.Security,
+                            contentDescription = null,
+                            tint = if (allGranted) GreenPrimary else CulpritAmber,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column {
+                        Text(
+                            text = "ADB Privileges & Permissions",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        val statusText = when {
+                            permissionState == null -> "Check permission status"
+                            allGranted -> "All elevated permissions active"
+                            else -> {
+                                val granted = permissionState.statuses.count { it.isGranted }
+                                val total = permissionState.statuses.size
+                                "$granted of $total permissions granted • Tap to configure"
+                            }
+                        }
+                        Text(
+                            text = statusText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (allGranted) GreenPrimary else CulpritAmber
+                        )
+                    }
+                }
+
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = "Open Setup",
+                    tint = TextSecondary
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         val context = LocalContext.current
 

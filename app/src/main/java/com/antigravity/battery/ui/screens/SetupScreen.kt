@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Error
@@ -62,7 +63,8 @@ import com.antigravity.battery.ui.theme.TextSecondary
 fun SetupScreen(
     permissionState: PermissionState,
     onRefreshPermissions: () -> Unit,
-    onContinueToSessions: () -> Unit
+    onContinueToSessions: () -> Unit,
+    onBack: (() -> Unit)? = null
 ) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
@@ -73,20 +75,44 @@ fun SetupScreen(
             .background(DarkBackground)
             .padding(16.dp)
     ) {
-        Image(
-            painter = painterResource(id = R.drawable.powertrace_banner_logo),
-            contentDescription = "PowerTrace",
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp)),
-            contentScale = ContentScale.FillWidth
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "ADB Privileges Setup",
-            style = MaterialTheme.typography.headlineMedium,
-            color = TextPrimary
-        )
+        if (onBack != null) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp)
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = TextPrimary
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "ADB Privileges Setup",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        } else {
+            Image(
+                painter = painterResource(id = R.drawable.powertrace_banner_logo),
+                contentDescription = "PowerTrace",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp)),
+                contentScale = ContentScale.FillWidth
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "ADB Privileges Setup",
+                style = MaterialTheme.typography.headlineMedium,
+                color = TextPrimary
+            )
+        }
         Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = "This non-root diagnostics utility requires elevated platform read privileges granted via one-time ADB commands.",
@@ -187,16 +213,16 @@ fun SetupScreen(
             }
 
             Button(
-                onClick = onContinueToSessions,
+                onClick = onBack ?: onContinueToSessions,
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (permissionState.areAllRequiredGranted) GreenPrimary else DarkSurfaceVariant
+                    containerColor = if (onBack != null || permissionState.areAllRequiredGranted) GreenPrimary else DarkSurfaceVariant
                 )
             ) {
                 Text(
-                    text = if (permissionState.areAllRequiredGranted) "Proceed" else "Proceed (Demo)",
-                    color = if (permissionState.areAllRequiredGranted) DarkBackground else TextPrimary,
+                    text = if (onBack != null) "Done" else if (permissionState.areAllRequiredGranted) "Proceed" else "Proceed (Demo)",
+                    color = if (onBack != null || permissionState.areAllRequiredGranted) DarkBackground else TextPrimary,
                     fontWeight = FontWeight.Bold
                 )
             }
