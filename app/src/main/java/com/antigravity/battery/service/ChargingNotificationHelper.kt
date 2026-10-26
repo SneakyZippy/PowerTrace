@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import com.antigravity.battery.MainActivity
 import com.antigravity.battery.R
 import com.antigravity.battery.core.model.ChargeTestSession
+import java.util.Locale
 
 object ChargingNotificationHelper {
 
