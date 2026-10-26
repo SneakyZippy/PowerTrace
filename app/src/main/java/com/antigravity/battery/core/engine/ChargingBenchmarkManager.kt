@@ -54,7 +54,7 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
     private var wattageSum: Double = 0.0
     private var sampleCount: Int = 0
     private var isThrottled: Boolean = false
-    private var lastKnownCharging: Boolean = false
+    private var lastKnownPlugged: Boolean = false
 
     private val powerReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
@@ -108,6 +108,7 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
 
     private var pausedSessionData: PausedSessionData? = null
     private var gracePeriodTimerJob: Job? = null
+    private var promptAutoResumeJob: Job? = null
 
     companion object {
         const val PREFS_NAME = "powertrace_accessory_prefs"
@@ -145,15 +146,11 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         // Initial sample & check plug status
         val batteryStatus = getBatteryIntent()
         val plugged = batteryStatus?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: -1
-        val isPlugged = plugged == BatteryManager.BATTERY_PLUGGED_AC ||
+        lastKnownPlugged = plugged == BatteryManager.BATTERY_PLUGGED_AC ||
                 plugged == BatteryManager.BATTERY_PLUGGED_USB ||
                 plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS
 
-        val status = batteryStatus?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
-        lastKnownCharging = isPlugged && (status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                status == BatteryManager.BATTERY_STATUS_FULL)
-
-        if (lastKnownCharging) {
+        if (lastKnownPlugged) {
             startSession()
         } else {
             sampleCurrentState()
@@ -177,7 +174,11 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
 
     @Synchronized
     fun onPowerConnected() {
-        lastKnownCharging = true
+        if (lastKnownPlugged && sessionStartTimeMs > 0L && pausedSessionData == null) {
+            // Already connected and session is actively recording
+            return
+        }
+        lastKnownPlugged = true
         gracePeriodTimerJob?.cancel()
         gracePeriodTimerJob = null
         _isGracePeriodActive.value = false
@@ -188,8 +189,9 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         if (paused != null && isDisconnectGraceEnabled()) {
             val disconnectDurationMs = nowMs - paused.disconnectTimeMs
             val graceMs = getDisconnectGraceSeconds() * 1000L
+            val wasMeaningfulSession = paused.samples.size >= 5 && (paused.disconnectTimeMs - paused.startTimeMs) >= 15_000L
 
-            if (disconnectDurationMs <= graceMs) {
+            if (disconnectDurationMs <= graceMs && wasMeaningfulSession) {
                 // Disconnected shortly! Prompt the user whether to go on or make a new one
                 val avgWattage = if (paused.sampleCount > 0) (paused.wattageSum / paused.sampleCount).toFloat() else paused.peakWattage
                 val prevSession = ChargeTestSession(
@@ -224,6 +226,15 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
                     disconnectedDurationMs = disconnectDurationMs
                 )
 
+                // If user doesn't interact within 60s while charging, automatically continue previous session
+                promptAutoResumeJob?.cancel()
+                promptAutoResumeJob = scope.launch {
+                    delay(60_000L)
+                    if (isActive && _reconnectPrompt.value != null) {
+                        resumePreviousSession()
+                    }
+                }
+
                 // Start recording live immediately so charging telemetry is not lost while waiting
                 startSession(
                     brickId = paused.brickId,
@@ -240,8 +251,30 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
 
     @Synchronized
     fun onPowerDisconnected(): ChargeTestSession? {
-        lastKnownCharging = false
-        if (sessionStartTimeMs == 0L && sampleCount == 0) {
+        if (!lastKnownPlugged && pausedSessionData != null) {
+            // Already handled disconnect
+            return null
+        }
+        lastKnownPlugged = false
+        promptAutoResumeJob?.cancel()
+        promptAutoResumeJob = null
+        ChargingNotificationHelper.cancelReconnectNotification(context)
+        _reconnectPrompt.value = null
+
+        val nowMs = System.currentTimeMillis()
+        val durationMs = if (sessionStartTimeMs > 0L) nowMs - sessionStartTimeMs else 0L
+
+        // If no active session or it was less than 15s with few samples, don't pause it for resume
+        if (sessionStartTimeMs == 0L || sampleCount < 5 || durationMs < 15_000L) {
+            sessionStartTimeMs = 0L
+            peakWattage = 0f
+            peakCurrentMa = 0
+            wattageSum = 0.0
+            sampleCount = 0
+            isThrottled = false
+            samplesList.clear()
+            _isGracePeriodActive.value = false
+            sampleCurrentState()
             return null
         }
 
@@ -249,7 +282,6 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
             return endSession()
         }
 
-        val nowMs = System.currentTimeMillis()
         val batteryStatus = getBatteryIntent()
         val endBatteryLevel = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, startBatteryLevel) ?: startBatteryLevel
 
@@ -353,6 +385,8 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
     }
 
     fun finalizePausedSessionNow() {
+        promptAutoResumeJob?.cancel()
+        promptAutoResumeJob = null
         ChargingNotificationHelper.cancelReconnectNotification(context)
         _reconnectPrompt.value = null
         finalizePausedSession()
@@ -360,6 +394,8 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
 
     @Synchronized
     fun resumePreviousSession() {
+        promptAutoResumeJob?.cancel()
+        promptAutoResumeJob = null
         ChargingNotificationHelper.cancelReconnectNotification(context)
         _reconnectPrompt.value = null
 
@@ -396,6 +432,8 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
 
     @Synchronized
     fun startNewSessionFromPrompt() {
+        promptAutoResumeJob?.cancel()
+        promptAutoResumeJob = null
         ChargingNotificationHelper.cancelReconnectNotification(context)
         _reconnectPrompt.value = null
 
@@ -542,10 +580,10 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         val isCharging = isPlugged && (status == BatteryManager.BATTERY_STATUS_CHARGING ||
                 status == BatteryManager.BATTERY_STATUS_FULL)
 
-        if (!lastKnownCharging && isCharging) {
+        if (!lastKnownPlugged && isPlugged) {
             onPowerConnected()
             return
-        } else if (lastKnownCharging && !isCharging) {
+        } else if (lastKnownPlugged && !isPlugged) {
             onPowerDisconnected()
             return
         }

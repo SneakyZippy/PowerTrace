@@ -86,7 +86,7 @@ fun ReconnectSessionDialog(
                         color = TextPrimary
                     )
                     Text(
-                        text = "Disconnected ${disconnectSec}s ago",
+                        text = "Was unplugged for ${disconnectSec}s",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )

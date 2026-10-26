@@ -146,9 +146,10 @@ object ChargingNotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val title = "⚡ Charger Reconnected (${disconnectedSec}s ago)"
+        val title = "⚡ Charger Reconnected"
         val body = String.format(
-            "Previous session: %dm (+%d%%). Continue it or start a new one?",
+            "Was unplugged for %ds. Resume previous session (%dm, +%d%%) or start new?",
+            disconnectedSec,
             durationMinutes,
             batteryGain
         )
@@ -160,6 +161,7 @@ object ChargingNotificationHelper {
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
+            .setTimeoutAfter(60_000L)
             .setContentIntent(pendingContentIntent)
             .addAction(R.mipmap.ic_launcher, "Continue", pendingContinueIntent)
             .addAction(R.mipmap.ic_launcher, "New Session", pendingNewSessionIntent)
