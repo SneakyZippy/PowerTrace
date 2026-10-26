@@ -76,6 +76,15 @@ data class ChargeTelemetrySample(
 }
 
 /**
+ * Information passed when a recent charging session is eligible for resumption after a brief disconnect.
+ */
+data class ReconnectPromptSession(
+    val previousSession: ChargeTestSession,
+    val previousSamples: List<ChargeTelemetrySample> = emptyList(),
+    val disconnectedDurationMs: Long = 0L
+)
+
+/**
  * Live instant charging telemetry emitted to the UI HUD.
  */
 data class LiveChargeTelemetry(
@@ -89,7 +98,9 @@ data class LiveChargeTelemetry(
     val peakWattageSoFar: Float = 0f,
     val avgWattageSoFar: Float = 0f,
     val sessionDurationMs: Long = 0L,
-    val isThrottlingDetected: Boolean = false
+    val isThrottlingDetected: Boolean = false,
+    val isGracePeriodActive: Boolean = false,
+    val gracePeriodRemainingSeconds: Int = 0
 ) {
     val tempCelsius: Float get() = tempDeciCelsius / 10.0f
     val voltageV: Float get() = voltageMv / 1000.0f

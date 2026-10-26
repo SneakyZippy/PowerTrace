@@ -1,9 +1,11 @@
 package com.antigravity.battery
 
 import com.antigravity.battery.core.model.Cable
+import com.antigravity.battery.core.model.ChargeTelemetrySample
 import com.antigravity.battery.core.model.ChargeTestSession
 import com.antigravity.battery.core.model.LiveChargeTelemetry
 import com.antigravity.battery.core.model.PowerBrick
+import com.antigravity.battery.core.model.ReconnectPromptSession
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -154,5 +156,94 @@ class ChargingBenchmarkTest {
         )
         assertEquals(100f, cable.ratedWattage, 0.01f)
         assertEquals(2.0f, cable.lengthMeters, 0.01f)
+    }
+
+    @Test
+    fun testDisconnectGracePeriodWithinThreshold() {
+        val disconnectTimeMs = 1000000L
+        val reconnectTimeMs = 1015000L // 15 seconds later
+        val gracePeriodSeconds = 60
+        val gracePeriodMs = gracePeriodSeconds * 1000L
+
+        val disconnectedDurationMs = reconnectTimeMs - disconnectTimeMs
+        val isWithinGracePeriod = disconnectedDurationMs <= gracePeriodMs
+
+        assertTrue("15s disconnect should be within 60s grace period", isWithinGracePeriod)
+        assertEquals(15000L, disconnectedDurationMs)
+    }
+
+    @Test
+    fun testDisconnectGracePeriodExceededThreshold() {
+        val disconnectTimeMs = 1000000L
+        val reconnectTimeMs = 1075000L // 75 seconds later
+        val gracePeriodSeconds = 60
+        val gracePeriodMs = gracePeriodSeconds * 1000L
+
+        val disconnectedDurationMs = reconnectTimeMs - disconnectTimeMs
+        val isWithinGracePeriod = disconnectedDurationMs <= gracePeriodMs
+
+        assertFalse("75s disconnect should exceed 60s grace period", isWithinGracePeriod)
+    }
+
+    @Test
+    fun testReconnectPromptSessionCreation() {
+        val session = ChargeTestSession(
+            startTimeMs = 1000000L,
+            endTimeMs = 1060000L,
+            startBatteryLevel = 30,
+            endBatteryLevel = 35,
+            peakWattage = 30.0f,
+            avgWattage = 25.0f,
+            minVoltageMv = 4000,
+            maxVoltageMv = 4300,
+            peakCurrentMa = 6000,
+            startTempDeciC = 290,
+            maxTempDeciC = 330
+        )
+        val prompt = ReconnectPromptSession(
+            previousSession = session,
+            previousSamples = emptyList(),
+            disconnectedDurationMs = 20000L
+        )
+
+        assertEquals(20000L, prompt.disconnectedDurationMs)
+        assertEquals(30, prompt.previousSession.startBatteryLevel)
+        assertEquals(35, prompt.previousSession.endBatteryLevel)
+        assertEquals(5, prompt.previousSession.batteryGained)
+    }
+
+    @Test
+    fun testLiveTelemetryWithGracePeriod() {
+        val telemetry = LiveChargeTelemetry(
+            isCharging = false,
+            chargePlugType = "Unplugged",
+            currentWattage = 0f,
+            currentMa = -400,
+            voltageMv = 4100,
+            batteryLevelPercent = 50,
+            tempDeciCelsius = 300,
+            isGracePeriodActive = true,
+            gracePeriodRemainingSeconds = 45
+        )
+
+        assertTrue(telemetry.isGracePeriodActive)
+        assertEquals(45, telemetry.gracePeriodRemainingSeconds)
+        assertFalse(telemetry.isCharging)
+    }
+
+    @Test
+    fun testSessionSampleMergingOnResume() {
+        val pausedSamples = listOf(
+            ChargeTelemetrySample(sessionId = "sess-1", timestampMs = 1000L, batteryLevel = 30, voltageMv = 4000, currentMa = 5000, wattage = 20f, tempDeciC = 290),
+            ChargeTelemetrySample(sessionId = "sess-1", timestampMs = 2000L, batteryLevel = 31, voltageMv = 4050, currentMa = 5100, wattage = 21f, tempDeciC = 292)
+        )
+        val newSamples = listOf(
+            ChargeTelemetrySample(sessionId = "sess-2", timestampMs = 15000L, batteryLevel = 31, voltageMv = 4050, currentMa = 5200, wattage = 22f, tempDeciC = 294)
+        )
+
+        val merged = (pausedSamples + newSamples).takeLast(600)
+        assertEquals(3, merged.size)
+        assertEquals(1000L, merged.first().timestampMs)
+        assertEquals(15000L, merged.last().timestampMs)
     }
 }

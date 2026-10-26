@@ -45,6 +45,7 @@ import com.antigravity.battery.core.model.ChargeTestSession
 import com.antigravity.battery.core.model.LiveChargeTelemetry
 import com.antigravity.battery.core.model.OverallAnalytics
 import com.antigravity.battery.core.model.PowerBrick
+import com.antigravity.battery.core.model.ReconnectPromptSession
 import com.antigravity.battery.data.repository.AccessoryRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -83,6 +84,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val liveChargingTelemetry: StateFlow<LiveChargeTelemetry> = chargingBenchmarkManager.liveTelemetry
     val pendingCompletedSession: StateFlow<Pair<ChargeTestSession, List<ChargeTelemetrySample>>?> = chargingBenchmarkManager.pendingCompletedSession
+    val reconnectPrompt: StateFlow<ReconnectPromptSession?> = chargingBenchmarkManager.reconnectPrompt
+    val isGracePeriodActive: StateFlow<Boolean> = chargingBenchmarkManager.isGracePeriodActive
+
+    private val _isDisconnectGraceEnabled = MutableStateFlow(chargingBenchmarkManager.isDisconnectGraceEnabled())
+    val isDisconnectGraceEnabled: StateFlow<Boolean> = _isDisconnectGraceEnabled.asStateFlow()
+
+    private val _disconnectGraceSeconds = MutableStateFlow(chargingBenchmarkManager.getDisconnectGraceSeconds())
+    val disconnectGraceSeconds: StateFlow<Int> = _disconnectGraceSeconds.asStateFlow()
 
     private val _isAutoPromptEnabled = MutableStateFlow(chargingBenchmarkManager.isAutoPromptEnabled())
     val isAutoPromptEnabled: StateFlow<Boolean> = _isAutoPromptEnabled.asStateFlow()
@@ -654,5 +663,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val clamped = gain.coerceIn(1, 50)
         chargingBenchmarkManager.setMinBatteryGain(clamped)
         _minBatteryGain.value = clamped
+    }
+
+    fun resumePreviousChargingSession() {
+        chargingBenchmarkManager.resumePreviousSession()
+    }
+
+    fun startNewChargingSession() {
+        chargingBenchmarkManager.startNewSessionFromPrompt()
+    }
+
+    fun finalizePausedSessionNow() {
+        chargingBenchmarkManager.finalizePausedSessionNow()
+    }
+
+    fun toggleDisconnectGraceEnabled(enabled: Boolean) {
+        chargingBenchmarkManager.setDisconnectGraceEnabled(enabled)
+        _isDisconnectGraceEnabled.value = enabled
+    }
+
+    fun updateDisconnectGraceSeconds(seconds: Int) {
+        val clamped = seconds.coerceIn(10, 300)
+        chargingBenchmarkManager.setDisconnectGraceSeconds(clamped)
+        _disconnectGraceSeconds.value = clamped
     }
 }

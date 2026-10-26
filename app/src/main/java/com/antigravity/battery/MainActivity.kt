@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import com.antigravity.battery.service.ChargingNotificationHelper
 import com.antigravity.battery.ui.AppNavTab
 import com.antigravity.battery.ui.MainViewModel
+import com.antigravity.battery.ui.components.ReconnectSessionDialog
 import com.antigravity.battery.ui.screens.AccessoriesScreen
 import com.antigravity.battery.ui.screens.AnalyticsScreen
 import com.antigravity.battery.ui.screens.CulpritDetailBottomSheet
@@ -113,6 +114,7 @@ class MainActivity : ComponentActivity() {
                 val chargingSessions by viewModel.chargingSessions.collectAsState()
                 val liveTelemetry by viewModel.liveChargingTelemetry.collectAsState()
                 val pendingSession by viewModel.pendingCompletedSession.collectAsState()
+                val reconnectPrompt by viewModel.reconnectPrompt.collectAsState()
 
                 val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
                 val tagSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -153,6 +155,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onStartPolling = { viewModel.startChargingPolling() },
                                 onStopPolling = { viewModel.stopChargingPolling() },
+                                onFinalizeGraceNow = { viewModel.finalizePausedSessionNow() },
                                 getSamplesForSession = { viewModel.getSamplesForSession(it) }
                             )
                             AppNavTab.ANALYTICS -> AnalyticsScreen(
@@ -165,6 +168,8 @@ class MainActivity : ComponentActivity() {
                                 val isAutoPromptEnabled by viewModel.isAutoPromptEnabled.collectAsState()
                                 val minDurationMinutes by viewModel.minDurationMinutes.collectAsState()
                                 val minBatteryGain by viewModel.minBatteryGain.collectAsState()
+                                val isDisconnectGraceEnabled by viewModel.isDisconnectGraceEnabled.collectAsState()
+                                val disconnectGraceSeconds by viewModel.disconnectGraceSeconds.collectAsState()
                                 SettingsScreen(
                                     useMockSource = useMock,
                                     onToggleMockSource = { viewModel.setMockSource(it) },
@@ -180,7 +185,11 @@ class MainActivity : ComponentActivity() {
                                     minDurationMinutes = minDurationMinutes,
                                     onUpdateMinDuration = { viewModel.updateMinDurationMinutes(it) },
                                     minBatteryGain = minBatteryGain,
-                                    onUpdateMinGain = { viewModel.updateMinBatteryGain(it) }
+                                    onUpdateMinGain = { viewModel.updateMinBatteryGain(it) },
+                                    isDisconnectGraceEnabled = isDisconnectGraceEnabled,
+                                    onToggleDisconnectGrace = { viewModel.toggleDisconnectGraceEnabled(it) },
+                                    disconnectGraceSeconds = disconnectGraceSeconds,
+                                    onUpdateDisconnectGraceSeconds = { viewModel.updateDisconnectGraceSeconds(it) }
                                 )
                             }
                             AppNavTab.SETUP -> SetupScreen(
@@ -223,6 +232,16 @@ class MainActivity : ComponentActivity() {
                                 onDismiss = { viewModel.clearPendingSession() }
                             )
                         }
+
+                        // Reconnect Prompt Dialog (Triggered when reconnected within short disconnect grace period)
+                        if (reconnectPrompt != null) {
+                            ReconnectSessionDialog(
+                                prompt = reconnectPrompt!!,
+                                onResumeSession = { viewModel.resumePreviousChargingSession() },
+                                onStartNewSession = { viewModel.startNewChargingSession() },
+                                onDismiss = { viewModel.resumePreviousChargingSession() }
+                            )
+                        }
                     }
                 }
             }
@@ -236,6 +255,8 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent) {
         if (intent.action == ChargingNotificationHelper.ACTION_TAG_ACCESSORIES) {
+            viewModel.setTab(AppNavTab.ACCESSORIES)
+        } else if (intent.action == ChargingNotificationHelper.ACTION_OPEN_RECONNECT_DIALOG) {
             viewModel.setTab(AppNavTab.ACCESSORIES)
         }
     }

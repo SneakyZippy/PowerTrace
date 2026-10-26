@@ -15,8 +15,10 @@ object ChargingNotificationHelper {
 
     const val CHANNEL_ID = "charging_benchmarks"
     const val NOTIFICATION_ID = 2001
+    const val NOTIFICATION_ID_RECONNECT = 2003
 
     const val ACTION_TAG_ACCESSORIES = "com.antigravity.battery.ACTION_TAG_ACCESSORIES"
+    const val ACTION_OPEN_RECONNECT_DIALOG = "com.antigravity.battery.ACTION_OPEN_RECONNECT_DIALOG"
     const val EXTRA_SESSION_ID = "extra_session_id"
     const val EXTRA_PEAK_W = "extra_peak_w"
     const val EXTRA_AVG_W = "extra_avg_w"
@@ -97,5 +99,78 @@ object ChargingNotificationHelper {
     fun cancelNotification(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
         manager?.cancel(NOTIFICATION_ID)
+    }
+
+    fun showReconnectPromptNotification(
+        context: Context,
+        session: ChargeTestSession,
+        disconnectedDurationMs: Long
+    ) {
+        createNotificationChannel(context)
+
+        val durationMinutes = (session.durationMs / 60000).coerceAtLeast(1)
+        val batteryGain = session.batteryGained
+        val disconnectedSec = (disconnectedDurationMs / 1000).coerceAtLeast(1)
+
+        // Tapping opens MainActivity which shows the ReconnectSessionDialog
+        val contentIntent = Intent(context, MainActivity::class.java).apply {
+            action = ACTION_OPEN_RECONNECT_DIALOG
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingContentIntent = PendingIntent.getActivity(
+            context,
+            NOTIFICATION_ID_RECONNECT,
+            contentIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Action: Continue Session
+        val continueIntent = Intent(context, ChargingActionReceiver::class.java).apply {
+            action = ChargingActionReceiver.ACTION_CONTINUE_SESSION
+        }
+        val pendingContinueIntent = PendingIntent.getBroadcast(
+            context,
+            NOTIFICATION_ID_RECONNECT + 1,
+            continueIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Action: Start New Session
+        val newSessionIntent = Intent(context, ChargingActionReceiver::class.java).apply {
+            action = ChargingActionReceiver.ACTION_START_NEW_SESSION
+        }
+        val pendingNewSessionIntent = PendingIntent.getBroadcast(
+            context,
+            NOTIFICATION_ID_RECONNECT + 2,
+            newSessionIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val title = "⚡ Charger Reconnected (${disconnectedSec}s ago)"
+        val body = String.format(
+            "Previous session: %dm (+%d%%). Continue it or start a new one?",
+            durationMinutes,
+            batteryGain
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingContentIntent)
+            .addAction(R.mipmap.ic_launcher, "Continue", pendingContinueIntent)
+            .addAction(R.mipmap.ic_launcher, "New Session", pendingNewSessionIntent)
+            .build()
+
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        manager?.notify(NOTIFICATION_ID_RECONNECT, notification)
+    }
+
+    fun cancelReconnectNotification(context: Context) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        manager?.cancel(NOTIFICATION_ID_RECONNECT)
     }
 }

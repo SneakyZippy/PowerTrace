@@ -95,7 +95,11 @@ fun SettingsScreen(
     minDurationMinutes: Int = 5,
     onUpdateMinDuration: (Int) -> Unit = {},
     minBatteryGain: Int = 5,
-    onUpdateMinGain: (Int) -> Unit = {}
+    onUpdateMinGain: (Int) -> Unit = {},
+    isDisconnectGraceEnabled: Boolean = true,
+    onToggleDisconnectGrace: (Boolean) -> Unit = {},
+    disconnectGraceSeconds: Int = 60,
+    onUpdateDisconnectGraceSeconds: (Int) -> Unit = {}
 ) {
     var isAdvancedExpanded by remember { mutableStateOf(false) }
     var isGuideOpen by remember { mutableStateOf(false) }
@@ -423,6 +427,70 @@ fun SettingsScreen(
                             colors = SliderDefaults.colors(
                                 thumbColor = AccentBlue,
                                 activeTrackColor = AccentBlue,
+                                inactiveTrackColor = DarkSurfaceVariant
+                            )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Short Disconnect Grace Period Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Short Disconnect Resume Prompt",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = TextPrimary
+                        )
+                        Text(
+                            "If disconnected briefly (e.g. bumped cable), asks whether to continue the session or start a new one upon reconnecting",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary
+                        )
+                    }
+                    Switch(
+                        checked = isDisconnectGraceEnabled,
+                        onCheckedChange = onToggleDisconnectGrace,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = DarkBackground,
+                            checkedTrackColor = GreenPrimary
+                        )
+                    )
+                }
+
+                if (isDisconnectGraceEnabled) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                "Disconnect Grace Window",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextPrimary
+                            )
+                            Text(
+                                "$disconnectGraceSeconds sec",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = GreenPrimary
+                            )
+                        }
+                        Slider(
+                            value = disconnectGraceSeconds.toFloat(),
+                            onValueChange = { onUpdateDisconnectGraceSeconds(it.toInt()) },
+                            valueRange = 15f..120f,
+                            steps = 20,
+                            colors = SliderDefaults.colors(
+                                thumbColor = GreenPrimary,
+                                activeTrackColor = GreenPrimary,
                                 inactiveTrackColor = DarkSurfaceVariant
                             )
                         )

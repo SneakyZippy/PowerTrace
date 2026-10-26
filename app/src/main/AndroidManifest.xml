@@ -78,6 +78,10 @@
             android:name=".service.DismissNotificationReceiver"
             android:exported="false" />
 
+        <receiver
+            android:name=".service.ChargingActionReceiver"
+            android:exported="false" />
+
         <!-- Automatically resume 24/7 background telemetry after device restart -->
         <receiver
             android:name=".service.BootReceiver"

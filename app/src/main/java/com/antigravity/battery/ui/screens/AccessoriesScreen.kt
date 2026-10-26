@@ -103,6 +103,7 @@ fun AccessoriesScreen(
     onSimulateTest: (onComplete: () -> Unit) -> Unit,
     onStartPolling: () -> Unit = {},
     onStopPolling: () -> Unit = {},
+    onFinalizeGraceNow: () -> Unit = {},
     getSamplesForSession: (String) -> Flow<List<ChargeTelemetrySample>> = { kotlinx.coroutines.flow.emptyFlow() }
 ) {
     DisposableEffect(Unit) {
@@ -180,6 +181,7 @@ fun AccessoriesScreen(
                     onSelectCable = { selectedHudCableId = it },
                     onAddNewBrick = { showAddBrickDialog = true },
                     onAddNewCable = { showAddCableDialog = true },
+                    onFinalizeGraceNow = onFinalizeGraceNow,
                     onSimulate = {
                         isSimulating = true
                         onSimulateTest {
@@ -285,7 +287,8 @@ private fun LiveChargeHudTab(
     onAddNewBrick: () -> Unit,
     onAddNewCable: () -> Unit,
     onSimulate: () -> Unit,
-    onSaveCurrent: () -> Unit
+    onSaveCurrent: () -> Unit,
+    onFinalizeGraceNow: () -> Unit = {}
 ) {
     val durationSec = (telemetry.sessionDurationMs / 1000L)
     val durationFormatted = String.format("%02d:%02d", durationSec / 60, durationSec % 60)
@@ -313,7 +316,13 @@ private fun LiveChargeHudTab(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(if (telemetry.isCharging) GreenPrimary.copy(alpha = 0.15f) else DarkSurface)
+                    .background(
+                        when {
+                            telemetry.isCharging -> GreenPrimary.copy(alpha = 0.15f)
+                            telemetry.isGracePeriodActive -> CulpritAmber.copy(alpha = 0.15f)
+                            else -> DarkSurface
+                        }
+                    )
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -321,15 +330,49 @@ private fun LiveChargeHudTab(
                     modifier = Modifier
                         .size(12.dp)
                         .clip(CircleShape)
-                        .background(if (telemetry.isCharging) GreenPrimary else TextSecondary)
+                        .background(
+                            when {
+                                telemetry.isCharging -> GreenPrimary
+                                telemetry.isGracePeriodActive -> CulpritAmber
+                                else -> TextSecondary
+                            }
+                        )
                 )
                 Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = if (telemetry.isCharging) "CONNECTED: ${telemetry.chargePlugType.uppercase()}" else "CHARGER DISCONNECTED (ON BATTERY)",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = if (telemetry.isCharging) GreenPrimary else TextSecondary
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = when {
+                            telemetry.isCharging -> "CONNECTED: ${telemetry.chargePlugType.uppercase()}"
+                            telemetry.isGracePeriodActive -> "DISCONNECTED (GRACE: ${telemetry.gracePeriodRemainingSeconds}S)"
+                            else -> "CHARGER DISCONNECTED (ON BATTERY)"
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = when {
+                            telemetry.isCharging -> GreenPrimary
+                            telemetry.isGracePeriodActive -> CulpritAmber
+                            else -> TextSecondary
+                        }
+                    )
+                    if (telemetry.isGracePeriodActive) {
+                        Text(
+                            text = "Reconnect now to resume session",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary
+                        )
+                    }
+                }
+                if (telemetry.isGracePeriodActive) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = onFinalizeGraceNow,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = CulpritAmber)
+                    ) {
+                        Text("Finish Now", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
             }
         }
 
