@@ -54,8 +54,8 @@ import java.util.UUID
 
 enum class AppNavTab {
     OVERVIEW,
-    ACCESSORIES,
     ANALYTICS,
+    ACCESSORIES,
     SETTINGS,
     SETUP
 }

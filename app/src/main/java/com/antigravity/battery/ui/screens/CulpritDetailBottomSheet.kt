@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,7 +34,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,7 +49,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import com.antigravity.battery.core.model.CulpritApp
+import com.antigravity.battery.core.model.CulpritWarningBadge
+import com.antigravity.battery.ui.components.MetricExplanation
+import com.antigravity.battery.ui.components.MetricExplanationDialog
+import com.antigravity.battery.ui.components.TelemetryGlossary
 import com.antigravity.battery.ui.components.WarningBadgeChip
+import com.antigravity.battery.ui.screens.culprit.CulpritHardwareAttributionCard
+import com.antigravity.battery.ui.screens.culprit.CulpritPreventionTipCard
 import com.antigravity.battery.ui.theme.AccentBlue
 import com.antigravity.battery.ui.theme.DarkBackground
 import com.antigravity.battery.ui.theme.DarkSurface
@@ -53,17 +64,6 @@ import com.antigravity.battery.ui.theme.GreenPrimary
 import com.antigravity.battery.ui.theme.TextPrimary
 import com.antigravity.battery.ui.theme.TextSecondary
 import java.util.Locale
-
-import androidx.compose.foundation.clickable
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import com.antigravity.battery.core.model.CulpritWarningBadge
-import com.antigravity.battery.ui.components.MetricExplanation
-import com.antigravity.battery.ui.components.MetricExplanationDialog
-import com.antigravity.battery.ui.components.TelemetryGlossary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -245,116 +245,16 @@ fun CulpritDetailBottomSheet(
             }
 
             // Actionable Prevention Card
-            if (!culprit.isSystemApp && culprit.primaryPackageName.isNotEmpty() && !culprit.primaryPackageName.startsWith("android.kernel")) {
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = DarkSurface),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Info,
-                                    contentDescription = null,
-                                    tint = AccentBlue,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "How To Prevent Drain From This App",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            val tips = mutableListOf<String>()
-                            if (culprit.wakeupAlarmCount >= 5) {
-                                tips.add("• Frequent Alarm Wakeups (${culprit.wakeupAlarmCount}x): Revoke 'Alarms & Reminders' permission in Android Settings or turn off in-app notification/sync polls.")
-                            }
-                            if (culprit.partialWakelockMs >= 15_000L) {
-                                tips.add("• Background Wakelock (${culprit.partialWakelockMs / 1000}s): Switch App Battery usage from 'Optimized' to 'Restricted' (or add to Deep Sleeping Apps).")
-                            }
-                            if (culprit.mobileRadioActiveMs >= 30_000L || culprit.mobileBytesRx + culprit.mobileBytesTx > 2 * 1024 * 1024) {
-                                tips.add("• Mobile Data Activity: Disable 'Background data' in Mobile Data usage settings to prevent syncing when screen is off.")
-                            }
-                            if (tips.isEmpty()) {
-                                tips.add("• Standby Activity: If this app should not run in background, restrict its battery profile in App Info.")
-                            }
-                            tips.forEach { tip ->
-                                Text(
-                                    text = tip,
-                                    fontSize = 12.sp,
-                                    color = TextSecondary,
-                                    lineHeight = 16.sp,
-                                    modifier = Modifier.padding(vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
-                }
+            item {
+                CulpritPreventionTipCard(culprit = culprit)
             }
 
             // Hardware & Network Energy Attribution Breakdown
             item {
-                Text(
-                    text = "Hardware Energy Attribution Breakdown",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TextPrimary
+                CulpritHardwareAttributionCard(
+                    culprit = culprit,
+                    onExplain = { activeExplanation = it }
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = DarkSurface),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        EnergyRowItem(
-                            label = "CPU Processing",
-                            mahValue = "${String.format(Locale.US, "%.2f", culprit.energyBreakdown.cpuMah)} mAh",
-                            detail = "${(culprit.cpuUserTimeMs + culprit.cpuSystemTimeMs) / 1000}s active",
-                            onClick = { activeExplanation = TelemetryGlossary.CPU_PROCESSING }
-                        )
-                        EnergyRowItem(
-                            label = "Wakelock Hold",
-                            mahValue = "${String.format(Locale.US, "%.2f", culprit.energyBreakdown.wakelockMah)} mAh",
-                            detail = "${culprit.partialWakelockMs / 1000}s hold",
-                            onClick = { activeExplanation = TelemetryGlossary.WAKELOCK_HOLD }
-                        )
-
-                        // Mobile Radio with network transfer volume
-                        val mobileDataText = if (culprit.mobileBytesRx > 0 || culprit.mobileBytesTx > 0) {
-                            " • ${formatDataVolume(culprit.mobileBytesRx)} ↓  ${formatDataVolume(culprit.mobileBytesTx)} ↑"
-                        } else ""
-                        EnergyRowItem(
-                            label = "Mobile Radio",
-                            mahValue = "${String.format(Locale.US, "%.2f", culprit.energyBreakdown.mobileRadioMah)} mAh",
-                            detail = "${culprit.mobileRadioActiveMs / 1000}s active$mobileDataText",
-                            onClick = { activeExplanation = TelemetryGlossary.MOBILE_RADIO }
-                        )
-
-                        // Wi-Fi with network transfer volume
-                        val wifiDataText = if (culprit.wifiBytesRx > 0 || culprit.wifiBytesTx > 0) {
-                            " • ${formatDataVolume(culprit.wifiBytesRx)} ↓  ${formatDataVolume(culprit.wifiBytesTx)} ↑"
-                        } else ""
-                        EnergyRowItem(
-                            label = "Wi-Fi Activity",
-                            mahValue = "${String.format(Locale.US, "%.2f", culprit.energyBreakdown.wifiMah)} mAh",
-                            detail = "${culprit.wifiScanCount} scans$wifiDataText",
-                            onClick = { activeExplanation = TelemetryGlossary.WIFI_ACTIVITY }
-                        )
-
-                        if (culprit.gpsDurationMs > 0) {
-                            EnergyRowItem(
-                                label = "GPS Location",
-                                mahValue = "${String.format(Locale.US, "%.2f", culprit.energyBreakdown.gpsMah)} mAh",
-                                detail = "${culprit.gpsDurationMs / 1000}s active",
-                                onClick = { activeExplanation = TelemetryGlossary.GPS_LOCATION }
-                            )
-                        }
-                    }
-                }
             }
 
             // Wakelock Tags Breakdown
@@ -518,49 +418,4 @@ fun CulpritDetailBottomSheet(
             onDismiss = { activeExplanation = null }
         )
     }
-}
-
-@Composable
-private fun EnergyRowItem(
-    label: String,
-    mahValue: String,
-    detail: String,
-    onClick: (() -> Unit)? = null
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .let { if (onClick != null) it.clip(RoundedCornerShape(6.dp)).clickable { onClick() } else it }
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f, fill = false)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(label, style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
-                if (onClick != null) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = "Info",
-                        tint = TextSecondary.copy(alpha = 0.4f),
-                        modifier = Modifier.size(12.dp)
-                    )
-                }
-            }
-            Text(detail, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-        }
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(mahValue, fontWeight = FontWeight.Bold, color = TextPrimary)
-    }
-}
-
-private fun formatDataVolume(bytes: Long): String {
-    if (bytes <= 0L) return "0 B"
-    val kb = bytes / 1024.0
-    if (kb < 1024.0) return "${String.format(Locale.US, "%.1f", kb)} KB"
-    val mb = kb / 1024.0
-    if (mb < 1024.0) return "${String.format(Locale.US, "%.1f", mb)} MB"
-    val gb = mb / 1024.0
-    return "${String.format(Locale.US, "%.2f", gb)} GB"
 }

@@ -300,18 +300,18 @@ private fun AppBottomNavigation(
             onClick = { onTabSelected(AppNavTab.OVERVIEW) }
         )
         NavTabItem(
-            tab = AppNavTab.ACCESSORIES,
-            label = "Accessories",
-            icon = Icons.Default.Bolt,
-            isSelected = currentTab == AppNavTab.ACCESSORIES,
-            onClick = { onTabSelected(AppNavTab.ACCESSORIES) }
-        )
-        NavTabItem(
             tab = AppNavTab.ANALYTICS,
             label = "Analytics",
             icon = Icons.Default.Insights,
             isSelected = currentTab == AppNavTab.ANALYTICS,
             onClick = { onTabSelected(AppNavTab.ANALYTICS) }
+        )
+        NavTabItem(
+            tab = AppNavTab.ACCESSORIES,
+            label = "Accessories",
+            icon = Icons.Default.Bolt,
+            isSelected = currentTab == AppNavTab.ACCESSORIES,
+            onClick = { onTabSelected(AppNavTab.ACCESSORIES) }
         )
         NavTabItem(
             tab = AppNavTab.SETTINGS,

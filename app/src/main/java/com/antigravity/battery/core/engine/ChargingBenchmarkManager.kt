@@ -722,85 +722,22 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
      */
     fun simulateMockChargeSession(onComplete: () -> Unit = {}) {
         simulationJob?.cancel()
-        simulationJob = scope.launch {
-            val simSessionId = UUID.randomUUID().toString()
-            val now = System.currentTimeMillis()
-            val simStartTime = now - (12 * 60 * 1000L) // 12 min simulated duration
-            val simSamples = mutableListOf<ChargeTelemetrySample>()
-
-            var simPeakWattage = 0f
-            var simPeakCurrentMa = 0
-            var simWattageSum = 0.0
-            var simSampleCount = 0
-            var simMaxTemp = 295
-
-            val mockWatts = listOf(15.2f, 25.8f, 38.5f, 44.6f, 42.1f, 36.4f, 30.8f)
-            for ((index, w) in mockWatts.withIndex()) {
-                val voltageMv = 4200 + (index * 20)
-                val currentMa = ((w * 1_000_000f) / voltageMv).toInt()
-                val temp = 300 + (index * 10)
-
-                simPeakWattage = maxOf(simPeakWattage, w)
-                simPeakCurrentMa = maxOf(simPeakCurrentMa, currentMa)
-                simMaxTemp = maxOf(simMaxTemp, temp)
-                simWattageSum += w
-                simSampleCount++
-
-                val sample = ChargeTelemetrySample(
-                    sessionId = simSessionId,
-                    timestampMs = now - ((mockWatts.size - index) * 1000L),
-                    batteryLevel = 22 + (index * 2),
-                    voltageMv = voltageMv,
-                    currentMa = currentMa,
-                    wattage = w,
-                    tempDeciC = temp
-                )
-                simSamples.add(sample)
-
-                _liveTelemetry.value = LiveChargeTelemetry(
-                    isCharging = true,
-                    chargePlugType = "AC Wall Charger (Simulation)",
-                    currentWattage = w,
-                    currentMa = currentMa,
-                    voltageMv = voltageMv,
-                    batteryLevelPercent = 22 + (index * 2),
-                    tempDeciCelsius = temp,
-                    peakWattageSoFar = simPeakWattage,
-                    avgWattageSoFar = (simWattageSum / simSampleCount).toFloat(),
-                    sessionDurationMs = 12 * 60 * 1000L,
-                    isThrottlingDetected = false
-                )
-                delay(600L)
+        simulationJob = MockChargeSimulator.simulate(
+            scope = scope,
+            context = context,
+            activeBrickId = activeBrickId,
+            activeCableId = activeCableId,
+            activeBrickName = activeBrickName,
+            activeCableName = activeCableName,
+            onTelemetryUpdated = { _liveTelemetry.value = it },
+            onSessionCompleted = { simSession, simSamples ->
+                _pendingCompletedSession.value = Pair(simSession, simSamples)
+            },
+            onComplete = {
+                sampleCurrentState()
+                onComplete()
             }
-
-            // Conclude simulation session
-            val simSession = ChargeTestSession(
-                id = simSessionId,
-                brickId = activeBrickId,
-                cableId = activeCableId,
-                brickName = activeBrickName.ifBlank { "Stock OEM Charger" },
-                cableName = activeCableName.ifBlank { "Stock USB-C Cable" },
-                startTimeMs = simStartTime,
-                endTimeMs = System.currentTimeMillis(),
-                startBatteryLevel = 22,
-                endBatteryLevel = 36,
-                peakWattage = simPeakWattage,
-                avgWattage = (simWattageSum / simSampleCount).toFloat(),
-                minVoltageMv = 4200,
-                maxVoltageMv = 4340,
-                peakCurrentMa = simPeakCurrentMa,
-                startTempDeciC = 295,
-                maxTempDeciC = simMaxTemp,
-                isThrottled = false
-            )
-
-            _pendingCompletedSession.value = Pair(simSession, simSamples)
-            ChargingNotificationHelper.showSessionFinishedNotification(context, simSession)
-
-            // Re-sample real device state immediately
-            sampleCurrentState()
-            onComplete()
-        }
+        )
     }
 
     private fun getBatteryIntent(): Intent? {

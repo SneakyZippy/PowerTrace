@@ -20,13 +20,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Power
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,7 +39,6 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -53,7 +49,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -62,8 +57,9 @@ import com.antigravity.battery.core.model.ChargeTestSession
 import com.antigravity.battery.core.model.PowerBrick
 import com.antigravity.battery.ui.components.AddCableDialog
 import com.antigravity.battery.ui.components.AddPowerBrickDialog
+import com.antigravity.battery.ui.components.DiscardSessionConfirmDialog
+import com.antigravity.battery.ui.components.SessionMetricsSummaryCard
 import com.antigravity.battery.ui.theme.AccentBlue
-import com.antigravity.battery.ui.theme.CulpritAmber
 import com.antigravity.battery.ui.theme.CulpritRed
 import com.antigravity.battery.ui.theme.DarkBackground
 import com.antigravity.battery.ui.theme.DarkSurface
@@ -72,7 +68,6 @@ import com.antigravity.battery.ui.theme.GreenPrimary
 import com.antigravity.battery.ui.theme.TextPrimary
 import com.antigravity.battery.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -174,49 +169,7 @@ fun TagAccessoriesBottomSheet(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Metrics Summary Card
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(DarkSurface)
-                    .padding(16.dp)
-            ) {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        MetricItem("Peak Power", String.format(Locale.US, "%.1f W", session.peakWattage), GreenPrimary)
-                        MetricItem("Avg Power", String.format(Locale.US, "%.1f W", session.avgWattage), TextPrimary)
-                        MetricItem("Duration", "${durationMin}m", AccentBlue)
-                        MetricItem("Gained", "+${session.batteryGained}%", GreenPrimary)
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        MetricItem("Battery Range", "${session.startBatteryLevel}% → ${session.endBatteryLevel}%")
-                        MetricItem("Peak Current", "${session.peakCurrentMa} mA")
-                        MetricItem("Max Temp", String.format(Locale.US, "%.1f°C", session.maxTempCelsius), if (session.maxTempCelsius >= 39f) CulpritAmber else TextPrimary)
-                    }
-
-                    if (session.isThrottled) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Warning, contentDescription = null, tint = CulpritAmber, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                "Thermal throttling was detected during this charge session",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = CulpritAmber
-                            )
-                        }
-                    }
-                }
-            }
+            SessionMetricsSummaryCard(session = session, durationMin = durationMin)
 
             Spacer(modifier = Modifier.height(20.dp))
 
@@ -481,101 +434,21 @@ fun TagAccessoriesBottomSheet(
 
     // Confirmation / Accept-Discard Dialog when swiping down or clicking discard
     if (showDismissConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = {
-                // If tapped outside or back pressed on the dialog, safely save to history
-                // so the user NEVER loses their benchmark data!
+        DiscardSessionConfirmDialog(
+            session = session,
+            durationMin = durationMin,
+            onSaveAndDismiss = {
                 saveAndDismiss()
                 showDismissConfirmDialog = false
             },
-            containerColor = DarkSurface,
-            shape = RoundedCornerShape(18.dp),
-            title = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Bolt,
-                        contentDescription = null,
-                        tint = GreenPrimary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Text(
-                        text = "Save Charging Benchmark?",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
-                }
+            onKeepTagging = {
+                showDismissConfirmDialog = false
+                coroutineScope.launch { sheetState.show() }
             },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "You finished a charging test (+${session.batteryGained}% in ${durationMin}m, peak ${String.format(Locale.US, "%.1f", session.peakWattage)} W).",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextPrimary
-                    )
-                    Text(
-                        text = "Would you like to save this benchmark test to your history or discard it?",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        saveAndDismiss()
-                        showDismissConfirmDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("Save to History", color = DarkBackground, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(
-                        onClick = {
-                            showDismissConfirmDialog = false
-                            coroutineScope.launch { sheetState.show() }
-                        }
-                    ) {
-                        Text("Keep Tagging", color = TextSecondary)
-                    }
-
-                    TextButton(
-                        onClick = {
-                            showDismissConfirmDialog = false
-                            onDismiss() // Explicitly discards session
-                        }
-                    ) {
-                        Text("Discard", color = CulpritRed, fontWeight = FontWeight.Bold)
-                    }
-                }
+            onDiscard = {
+                showDismissConfirmDialog = false
+                onDismiss() // Explicitly discards session
             }
-        )
-    }
-}
-
-@Composable
-private fun MetricItem(
-    label: String,
-    value: String,
-    highlightColor: Color = TextPrimary
-) {
-    Column {
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = highlightColor
         )
     }
 }
