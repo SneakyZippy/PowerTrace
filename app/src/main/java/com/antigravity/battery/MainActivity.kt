@@ -267,6 +267,7 @@ class MainActivity : ComponentActivity() {
         if (intent.action == ChargingNotificationHelper.ACTION_TAG_ACCESSORIES) {
             viewModel.setTab(AppNavTab.ACCESSORIES)
             ChargingNotificationHelper.cancelNotification(this)
+            ChargingNotificationHelper.cancelDisconnectGraceNotification(this)
         } else if (intent.action == ChargingNotificationHelper.ACTION_OPEN_RECONNECT_DIALOG) {
             viewModel.setTab(AppNavTab.ACCESSORIES)
             ChargingNotificationHelper.cancelReconnectNotification(this)

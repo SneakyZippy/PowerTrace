@@ -111,13 +111,14 @@ object ChargingNotificationHelper {
     ) {
         createNotificationChannel(context)
 
-        val durationMinutes = (session.durationMs / 60000).coerceAtLeast(1)
+        val durationSec = (session.durationMs / 1000L).coerceAtLeast(1)
+        val durationStr = if (durationSec >= 60) "${durationSec / 60}m ${durationSec % 60}s" else "${durationSec}s"
         val batteryGain = session.batteryGained
 
         // Tapping the notification body opens MainActivity, immediately finalizes grace period and opens the Tag sheet
         val contentIntent = Intent(context, MainActivity::class.java).apply {
             action = ACTION_FINISH_AND_TAG
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pendingContentIntent = PendingIntent.getActivity(
             context,
@@ -126,7 +127,7 @@ object ChargingNotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Action: Save Now
+        // Action: End & Save Now
         val saveNowIntent = Intent(context, ChargingActionReceiver::class.java).apply {
             action = ChargingActionReceiver.ACTION_FINISH_SESSION_NOW
         }
@@ -148,28 +149,21 @@ object ChargingNotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val title = "⚡ Charger Disconnected • Save Session?"
-        val body = String.format(
-            Locale.US,
-            "+%d%% in %dm (Peak %.1fW). Auto-resumes for %ds if reconnected. Tap to save now.",
-            batteryGain,
-            durationMinutes,
-            session.peakWattage,
-            remainingSeconds
-        )
+        val title = "⚡ Charger Disconnected"
+        val shortBody = "End test now and save the charging session"
+        val bigBody = "End test now and save the charging session\n+$batteryGain% in $durationStr • Peak ${String.format(Locale.US, "%.1f", session.peakWattage)}W\nAuto-resumes if reconnected within ${remainingSeconds}s"
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentText(shortBody)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(bigBody))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setTimeoutAfter(remainingSeconds * 1000L)
             .setContentIntent(pendingContentIntent)
-            .addAction(R.mipmap.ic_launcher, "Save Now", pendingSaveNowIntent)
+            .addAction(R.mipmap.ic_launcher, "End & Save Now", pendingSaveNowIntent)
             .addAction(R.mipmap.ic_launcher, "Discard", pendingDiscardIntent)
-            .setOnlyAlertOnce(true)
             .build()
 
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager

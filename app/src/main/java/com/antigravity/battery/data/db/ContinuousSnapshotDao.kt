@@ -27,6 +27,20 @@ interface ContinuousSnapshotDao {
     @Query("SELECT * FROM periodic_snapshots WHERE id IN (:ids)")
     suspend fun getSnapshotsByIds(ids: List<Long>): List<PeriodicSnapshotEntity>
 
+    suspend fun getSnapshotsByIdsChunked(ids: List<Long>, chunkSize: Int = 25): List<PeriodicSnapshotEntity> {
+        if (ids.isEmpty()) return emptyList()
+        val uniqueIds = ids.distinct()
+        val result = ArrayList<PeriodicSnapshotEntity>(uniqueIds.size)
+        for (chunk in uniqueIds.chunked(chunkSize)) {
+            try {
+                result.addAll(getSnapshotsByIds(chunk))
+            } catch (e: Exception) {
+                android.util.Log.e("ContinuousDao", "Error fetching snapshot chunk of size ${chunk.size}: ${e.message}")
+            }
+        }
+        return result
+    }
+
     @Query("SELECT * FROM periodic_snapshots ORDER BY timestampMs DESC LIMIT 1")
     suspend fun getLatestSnapshot(): PeriodicSnapshotEntity?
 

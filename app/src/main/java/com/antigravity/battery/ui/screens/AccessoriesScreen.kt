@@ -350,7 +350,7 @@ private fun LiveChargeHudTab(
                     Text(
                         text = when {
                             telemetry.isCharging -> "CONNECTED: ${telemetry.chargePlugType.uppercase()}"
-                            telemetry.isGracePeriodActive -> "DISCONNECTED (GRACE: ${telemetry.gracePeriodRemainingSeconds}S)"
+                            telemetry.isGracePeriodActive -> "CHARGER DISCONNECTED (RESUME: ${telemetry.gracePeriodRemainingSeconds}S)"
                             else -> "CHARGER DISCONNECTED (ON BATTERY)"
                         },
                         style = MaterialTheme.typography.titleSmall,
