@@ -201,7 +201,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setTab(tab: AppNavTab) {
         _currentTab.value = tab
-        if (tab == AppNavTab.ANALYTICS && _analyticsData.value == null) {
+        if (tab == AppNavTab.ANALYTICS && (_analyticsData.value == null || _analyticsData.value?.totalSnapshots == 0)) {
             refreshAnalytics()
         }
     }
@@ -212,7 +212,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refreshAnalytics() {
         analyticsRefreshJob?.cancel()
-        analyticsRefreshJob = viewModelScope.launch(Dispatchers.Default) {
+        analyticsRefreshJob = viewModelScope.launch(Dispatchers.IO) {
             _isAnalyticsLoading.value = true
             try {
                 val snapshots = continuousDao.getAllLightweightSnapshots()
@@ -223,7 +223,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 val boundaryIds = timelineEngine.findRequiredBoundarySnapshotIds(snapshots)
                 val boundaryEntities = if (boundaryIds.isNotEmpty()) {
-                    continuousDao.getSnapshotsByIds(boundaryIds).associateBy { it.id }
+                    try {
+                        continuousDao.getSnapshotsByIdsChunked(boundaryIds).associateBy { it.id }
+                    } catch (e: Exception) {
+                        android.util.Log.e("MainViewModel", "Error loading boundary snapshots: ${e.message}", e)
+                        emptyMap()
+                    }
                 } else emptyMap()
 
                 val analyticsEngine = AnalyticsEngine(uidResolver, _powerProfile.value)
@@ -286,7 +291,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val boundaryIds = timelineEngine.findRequiredBoundarySnapshotIds(lightSnapshots)
             val boundaryEntities = if (boundaryIds.isNotEmpty()) {
-                continuousDao.getSnapshotsByIds(boundaryIds).associateBy { it.id }
+                try {
+                    continuousDao.getSnapshotsByIdsChunked(boundaryIds).associateBy { it.id }
+                } catch (e: Exception) {
+                    android.util.Log.e("MainViewModel", "Error loading timeline boundary snapshots: ${e.message}", e)
+                    emptyMap()
+                }
             } else emptyMap()
 
             _timelineData.value = timelineEngine.aggregateLightweight(

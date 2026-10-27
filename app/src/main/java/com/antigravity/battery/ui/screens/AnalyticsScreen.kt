@@ -148,6 +148,20 @@ fun AnalyticsScreen(
                     color = TextSecondary,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
+                Spacer(modifier = Modifier.height(20.dp))
+                OutlinedButton(
+                    onClick = onRefresh,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GreenPrimary),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, GreenPrimary)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Refresh Analytics")
+                }
             }
         }
         return

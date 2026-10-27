@@ -321,7 +321,9 @@ class AnalyticsEngine(
                     // or data volume (~20 MB/hr mobile baseline), capped within segment duration.
                     val estCellMsFromRadio = (segRadioMs * 2.5).toLong()
                     val estCellMsFromBytes = ((segCellBytes.toDouble() / (20.0 * 1024.0 * 1024.0)) * 3_600_000.0).toLong()
-                    val estCellMs = maxOf(estCellMsFromRadio, estCellMsFromBytes).coerceIn(600_000L, segment.durationMs)
+                    val estCellMs = if (segment.durationMs > 0L) {
+                        maxOf(estCellMsFromRadio, estCellMsFromBytes).coerceIn(0L, segment.durationMs)
+                    } else 0L
                     cellMs = estCellMs
                     wifiMs = (segment.durationMs - cellMs).coerceAtLeast(0L)
 
@@ -400,7 +402,9 @@ class AnalyticsEngine(
                 val resolved = uidResolver.resolve(uid)
                 val topTag = delta.tags.maxByOrNull { it.value }?.key ?: ""
                 val savingsMah = ((delta.wlDuration / 3_600_000.0) * powerProfile.cpuAwakeMa * 10.0).roundToInt() / 10.0
-                val savingsPct = ((savingsMah / powerProfile.batteryCapacityMah * 100.0) * 10.0).roundToInt() / 10.0
+                val savingsPct = if (powerProfile.batteryCapacityMah > 0.0) {
+                    ((savingsMah / powerProfile.batteryCapacityMah * 100.0) * 10.0).roundToInt() / 10.0
+                } else 0.0
                 wakelockLeaders.add(
                     WakelockLeader(
                         uid = uid,
@@ -422,7 +426,9 @@ class AnalyticsEngine(
         val alarmLeaders = packageAlarms.map { (pkg, wakeups) ->
             val topAction = packageAlarmActions[pkg]?.maxByOrNull { it.value }?.key ?: ""
             val savingsMah = ((wakeups * 0.05) * 10.0).roundToInt() / 10.0
-            val savingsPct = ((savingsMah / powerProfile.batteryCapacityMah * 100.0) * 10.0).roundToInt() / 10.0
+            val savingsPct = if (powerProfile.batteryCapacityMah > 0.0) {
+                ((savingsMah / powerProfile.batteryCapacityMah * 100.0) * 10.0).roundToInt() / 10.0
+            } else 0.0
             AlarmLeader(
                 packageName = pkg,
                 appLabel = pkg.substringAfterLast('.').replaceFirstChar { it.uppercase() },
@@ -453,7 +459,7 @@ class AnalyticsEngine(
         val cellH = cellSegmentMs.toDouble() / 3_600_000.0
         val wifiRate = if (wifiH > 0.05) ((wifiSegmentDrop / wifiH) * 100.0).roundToInt() / 100.0 else 0.0
         val cellRate = if (cellH > 0.05) ((cellSegmentDrop / cellH) * 100.0).roundToInt() / 100.0 else 0.0
-        val penalty = if (wifiRate > 0.1) ((cellRate / wifiRate) * 10.0).roundToInt() / 10.0 else 1.0
+        val penalty = if (wifiRate > 0.1 && !cellRate.isNaN() && !wifiRate.isNaN()) ((cellRate / wifiRate) * 10.0).roundToInt() / 10.0 else 1.0
 
         val networkComparison = NetworkDrainComparison(
             wifiHours = (wifiH * 10.0).roundToInt() / 10.0,
