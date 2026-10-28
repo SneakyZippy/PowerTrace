@@ -22,6 +22,13 @@
 
 Standard Android battery menus only show coarse, aggregated percentages. PowerTrace takes snapshots of Android's internal diagnostic sources (`batterystats`, `dumpsys alarm`, `dumpsys power`, and device power profiles) to break down battery loss across custom recording sessions—without requiring root access.
 
+## Screenshots
+
+| **Continuous Telemetry** | **Culprit & Wakeup Detection** | **Battery Analytics & Insights** |
+| :---: | :---: | :---: |
+| <img src="docs/screenshots/overview_telemetry.png" width="270" alt="Continuous Telemetry & Sleep Efficiency" /> | <img src="docs/screenshots/overview_culprits.png" width="270" alt="Wakeup Culprits & Actionable Tips" /> | <img src="docs/screenshots/analytics_insights.png" width="270" alt="Diagnostic Insights & Wakelock Warnings" /> |
+| Real-time discharge curves, screen-off sleep efficiency & Doze rates | Pinpoint apps holding wakelocks with actionable tips to stop idle drain | Automated diagnostic findings, persistent wakelock alerts & thermal tracking |
+
 ## Download
 
 Get the latest build directly from GitHub:
@@ -31,12 +38,13 @@ Get the latest build directly from GitHub:
 
 ## Key Features
 
-- **Session Recording**: Start a diagnostic session (e.g., overnight or during standby) and calculate deltas between baseline and completion.
+- **24/7 Continuous Telemetry**: Background monitoring to record periodic snapshots throughout the day and calculate screen-off deep sleep vs. awake ratios.
+- **Session Recording**: Start a dedicated diagnostic session (e.g., overnight or standby) and calculate deltas between baseline and completion.
 - **Wakeup & Culprit Detection**: Pinpoints apps and processes causing excessive alarms, wakeups, partial wakelocks, and background CPU time.
+- **Actionable Remediation**: Built-in prevention tips and direct shortcuts to app settings to restrict rogue background battery drain.
+- **Diagnostic Insights Engine**: Automated findings that flag persistent background workers, monitor cell temperature, and evaluate Doze efficiency.
 - **Power Profile Attribution**: Estimates energy use (mAh) based on your device's OEM power profile hardware coefficients.
-- **Auto-Stop Triggers**: Optionally end sessions automatically when you unlock the device or plug it into a charger.
-- **Continuous Monitoring**: An optional background service to track periodic intervals throughout the day.
-- **Charger & Cable Benchmarking**: Measure real-time charging wattage, voltage, net current, and thermal curves. Catalog your power bricks and USB cables separately to compare combinations and spot bottlenecked cables.
+- **Charger & Cable Benchmarking**: Measure real-time charging wattage, voltage, net current, and thermal curves. Catalog power bricks and USB cables separately to compare combinations and spot bottlenecked cables.
 - **Brief Disconnect Grace & Session Resumption**: Accidentally bumping a cable, switching wall sockets, or picking up your phone from a wireless pad for less than a minute won't destroy your session. The app holds a configurable grace window (default 60s) and prompts you to continue the existing benchmark or start a new one, with seamless automatic resumption if uninterrupted.
 - **Qi Wireless & Smart Dock Support**: Accurately tracks wireless charging pads (Qi) and Google Pixel Stand / smart docks, measuring live wattage and heat generation with dedicated direct/cableless presets.
 - **Diagnostics Export**: Export session snapshots as JSON or raw diagnostic checkins for debugging and bug reports.
