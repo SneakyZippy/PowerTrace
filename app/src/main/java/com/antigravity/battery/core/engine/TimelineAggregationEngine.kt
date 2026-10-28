@@ -140,7 +140,7 @@ class TimelineAggregationEngine(
                 screenOnDurationMs = 0L,
                 deepSleepDurationMs = 0L,
                 awakeScreenOffMs = 0L,
-                deepSleepEfficiencyPercent = 100.0,
+                deepSleepEfficiencyPercent = 0.0,
                 topCulprits = emptyList()
             )
         }
@@ -198,7 +198,7 @@ class TimelineAggregationEngine(
                 val rawDeltaUptime = (next.totalUptimeMs - curr.totalUptimeMs).coerceAtLeast(0L)
                 val deltaUptime = rawDeltaUptime.coerceAtMost(deltaRealtime)
                 val rawDeltaScreenOn = (next.screenOnDurationMs - curr.screenOnDurationMs).coerceAtLeast(0L)
-                val deltaScreenOn = rawDeltaScreenOn.coerceAtMost(deltaRealtime)
+                val deltaScreenOn = rawDeltaScreenOn.coerceAtMost(deltaUptime)
 
                 totalScreenOnMs += deltaScreenOn
                 val sliceDeepSleep = (deltaRealtime - deltaUptime).coerceAtLeast(0L)
@@ -243,7 +243,7 @@ class TimelineAggregationEngine(
         val screenOffHardwareMs = totalDeepSleepMs + totalAwakeScreenOffMs
         val sleepEfficiency = if (screenOffHardwareMs > 0L) {
             ((totalDeepSleepMs.toDouble() / screenOffHardwareMs.toDouble()) * 100.0).coerceIn(0.0, 100.0)
-        } else 100.0
+        } else 0.0
 
         // Build culprit list from aggregated deltas
         val culpritsList = mutableListOf<CulpritApp>()

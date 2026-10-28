@@ -23,12 +23,37 @@ class ChargingBenchmarkTest {
     }
 
     @Test
+    fun testWirelessTrickleChargingWattage() {
+        // 43,095 microamps (0.043A trickle charge near full on wireless pad)
+        val rawMicroamps = 43095
+        val currentMa = rawMicroamps / 1000 // 43 mA
+        val voltageMv = 4200 // 4.2V
+
+        val wattage = (voltageMv.toFloat() * currentMa.toFloat()) / 1_000_000f
+
+        // Must be ~0.18W, NOT 181W!
+        assertEquals(0.1806f, wattage, 0.01f)
+        assertTrue("Wattage must not be inflated into 180W+", wattage < 1.0f)
+    }
+
+    @Test
     fun testFastChargePowerCalculation() {
         val voltageMv = 4350
         val currentMa = 10000
         val wattage = (voltageMv.toFloat() * currentMa.toFloat()) / 1_000_000f
 
         assertEquals(43.5f, wattage, 0.001f)
+    }
+
+    @Test
+    fun testDualCellFastChargePowerCalculation() {
+        // Dual-cell battery pack in series (8.4V nominal) charging at 8A
+        val voltageMv = 8400
+        val currentMa = 8000
+        val wattage = (voltageMv.toFloat() * currentMa.toFloat()) / 1_000_000f
+
+        assertEquals(67.2f, wattage, 0.001f)
+        assertTrue("High wattage should be allowed up to 240W", wattage > 65.0f && wattage < 240.0f)
     }
 
     @Test

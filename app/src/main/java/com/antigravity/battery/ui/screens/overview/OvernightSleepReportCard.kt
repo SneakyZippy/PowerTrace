@@ -45,8 +45,11 @@ fun OvernightSleepReportCard(
     val drainRate = timelineData.averageDrainRatePerHour
     val efficiency = timelineData.deepSleepEfficiencyPercent
     val drop = timelineData.totalDischargePercent
+    val hasData = timelineData.points.isNotEmpty() && timelineData.totalDischargeDurationMs >= 60_000L
+    val hasScreenOffTime = (timelineData.deepSleepDurationMs + timelineData.awakeScreenOffMs) >= 60_000L
 
     val (statusLabel, statusColor, statusDesc) = when {
+        !hasData -> Triple("NO SLEEP DATA YET", TextSecondary, "Monitoring active. Overnight sleep diagnostics will populate once an idle discharge period is recorded.")
         drainRate <= 0.8 -> Triple("EXCELLENT SLEEP 🌙", GreenPrimary, "Deep CPU suspend maintained. Minimal background wakefulness.")
         drainRate <= 1.5 -> Triple("HEALTHY STANDBY", AccentBlue, "Normal overnight idle drain with standard periodic syncs.")
         drainRate <= 2.5 -> Triple("ELEVATED SLEEP DRAIN ⚠️", CulpritAmber, "Background apps or wakelocks interrupted sleep more often than optimal.")
@@ -107,15 +110,15 @@ fun OvernightSleepReportCard(
             ) {
                 Column {
                     Text("Hourly Pace", fontSize = 11.sp, color = TextSecondary)
-                    Text("${String.format(Locale.US, "%.1f", drainRate)}%/hr", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = statusColor)
+                    Text(if (hasData) "${String.format(Locale.US, "%.1f", drainRate)}%/hr" else "--", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = statusColor)
                 }
                 Column {
                     Text("Deep Sleep", fontSize = 11.sp, color = TextSecondary)
-                    Text("${efficiency.toInt()}%", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = GreenPrimary)
+                    Text(if (hasScreenOffTime) "${efficiency.toInt()}%" else "--", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if (!hasScreenOffTime) TextSecondary else if (efficiency >= 80) GreenPrimary else if (efficiency >= 65) CulpritAmber else CulpritRed)
                 }
                 Column {
                     Text("Overnight Drop", fontSize = 11.sp, color = TextSecondary)
-                    Text("-$drop%", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if (drop > 5) CulpritRed else TextPrimary)
+                    Text(if (hasData) "-$drop%" else "--", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if (drop > 5) CulpritRed else TextPrimary)
                 }
             }
 

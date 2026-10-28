@@ -623,22 +623,27 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
 
         // Read instantaneous current
         // Standard Android: positive = charging into battery, negative = discharging out of battery
-        val rawCurrent = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-        val rawMa = if (kotlin.math.abs(rawCurrent) > 50000) {
-            rawCurrent / 1000
-        } else {
-            rawCurrent
-        }
+        val rawProperty = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+        val rawCurrent = if (rawProperty != Int.MIN_VALUE) rawProperty else 0
+
+        // Android API contract: BATTERY_PROPERTY_CURRENT_NOW is strictly in microamperes (uA).
+        // 1 mA = 1,000 uA. Low trickle charge (e.g. 43 mA) is 43,000 uA.
+        // Convert to mA by dividing by 1,000.
+        val rawMa = rawCurrent / 1000
 
         // Net charging current into battery (mA). Must be strictly positive and only when charging.
-        val chargingCurrentMa = if (isCharging && rawMa > 0) rawMa else 0
+        // Cap at physically plausible phone battery charging current (max 25,000 mA / 25A for high-speed multi-cell charging).
+        val chargingCurrentMa = if (isCharging && rawMa > 0) rawMa.coerceAtMost(25_000) else 0
 
         // Wattage = V (mV) * I (mA) / 1,000,000
-        val wattage = if (isCharging && voltageMv > 0 && chargingCurrentMa > 0) {
+        // Voltage range 2,000mV to 12,000mV supports both single-cell and dual-cell series packs
+        // Physical sanity cap: max 240W (USB-PD 3.1 Extended Power Range spec) prevents integer corruption
+        val computedWattage = if (isCharging && voltageMv in 2000..12000 && chargingCurrentMa > 0) {
             (voltageMv.toFloat() * chargingCurrentMa.toFloat()) / 1_000_000f
         } else {
             0f
         }
+        val wattage = computedWattage.coerceIn(0f, 240f)
 
         val nowMs = System.currentTimeMillis()
 

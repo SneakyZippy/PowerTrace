@@ -113,6 +113,7 @@ class AnalyticsEngineTest {
         assertEquals(2.0, result.totalDischargeHours, 0.1)
         assertEquals(3.0, result.avgDrainRatePerHour, 0.1)
         assertEquals(4865.0, result.estimatedCapacityMah, 0.1)
+        assertEquals(79.2, result.avgDeepSleepEfficiency, 0.1)
 
         // Verify wakelock leader identified
         assertTrue(result.topWakelockLeaders.isNotEmpty())

@@ -46,6 +46,29 @@ class BatterystatsCheckinParser {
                     deviceMetrics = parseBatterySection(parts, timestampMs)
                 }
 
+                // Device-level battery level section: 'lv' (startLevel, currentLevel)
+                uid == 0 && section == "lv" && parts.size >= 5 -> {
+                    val currentLevel = parts.getOrNull(5)?.toIntOrNull()
+                        ?: parts.getOrNull(4)?.toIntOrNull()
+                    if (currentLevel != null && currentLevel in 0..100) {
+                        deviceMetrics = deviceMetrics.copy(batteryLevelPercent = currentLevel)
+                    }
+                }
+
+                // Device-level miscellaneous section: 'm' (provides exact screenOnTime from AOSP BatteryStats)
+                uid == 0 && section == "m" && parts.size >= 5 -> {
+                    val sotRaw = parts[4].toLongOrNull() ?: 0L
+                    val sotMs = if (sotRaw > 100_000_000_000L) sotRaw / 1000L else sotRaw
+                    if (sotMs >= 0L) {
+                        val rt = deviceMetrics.totalRealtimeMs
+                        val offMs = if (rt > sotMs) rt - sotMs else deviceMetrics.screenOffDurationMs
+                        deviceMetrics = deviceMetrics.copy(
+                            screenOnDurationMs = sotMs,
+                            screenOffDurationMs = offMs
+                        )
+                    }
+                }
+
                 // UID-level Partial / Background Wakelocks: 'wl'
                 section == "wl" && parts.size >= 5 -> {
                     val tag = parts[4]
@@ -200,9 +223,10 @@ class BatterystatsCheckinParser {
             realtimeMs = if (batRealtimeRaw > 100_000_000_000L) batRealtimeRaw / 1000L else batRealtimeRaw
             uptimeMs = if (batUptimeRaw > 100_000_000_000L) batUptimeRaw / 1000L else batUptimeRaw
 
-            val sotRaw = parts.getOrNull(10)?.toLongOrNull() ?: 0L
-            screenOnDurationMs = if (sotRaw > 100_000_000_000L) sotRaw / 1000L else sotRaw
-            screenOffDurationMs = (realtimeMs - screenOnDurationMs).coerceAtLeast(0L)
+            // In AOSP bt line, index 10 is whichBatteryScreenOffRealtime (screen-off duration)
+            val screenOffRaw = parts.getOrNull(10)?.toLongOrNull() ?: 0L
+            screenOffDurationMs = if (screenOffRaw > 100_000_000_000L) screenOffRaw / 1000L else screenOffRaw
+            screenOnDurationMs = (realtimeMs - screenOffDurationMs).coerceAtLeast(0L)
         } else {
             val realtimeRaw = parts.getOrNull(4)?.toLongOrNull() ?: 0L
             val uptimeRaw = parts.getOrNull(5)?.toLongOrNull() ?: 0L
@@ -224,7 +248,7 @@ class BatterystatsCheckinParser {
         return DeviceLevelMetrics(
             timestampMs = nowMs,
             batteryLevelPercent = if (currentBatteryLevel in 0..100) currentBatteryLevel else 100,
-            voltageMv = if (currentVoltageMv in 2000..5000) currentVoltageMv else 4000,
+            voltageMv = if (currentVoltageMv in 2000..12000) currentVoltageMv else 4000,
             temperatureDeciCelsius = if (currentTemp in 0..1000) currentTemp else 250,
             isScreenOn = screenOnDurationMs > 0 && screenOffDurationMs == 0L,
             totalRealtimeMs = realtimeMs,

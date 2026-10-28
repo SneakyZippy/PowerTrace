@@ -41,7 +41,7 @@ class AnalyticsEngine(
                 totalDischargeHours = 0.0,
                 totalChargeHours = 0.0,
                 avgDrainRatePerHour = 0.0,
-                avgDeepSleepEfficiency = 100.0,
+                avgDeepSleepEfficiency = 0.0,
                 minTempC = 0.0,
                 maxTempC = 0.0,
                 avgTempC = 0.0,
@@ -148,7 +148,7 @@ class AnalyticsEngine(
                 val rawUptime = (next.totalUptimeMs - curr.totalUptimeMs).coerceAtLeast(0L)
                 val dUptime = rawUptime.coerceAtMost(dRealtime)
                 val rawScreenOn = (next.screenOnDurationMs - curr.screenOnDurationMs).coerceAtLeast(0L)
-                val dScreenOn = rawScreenOn.coerceAtMost(dRealtime)
+                val dScreenOn = rawScreenOn.coerceAtMost(dUptime)
 
                 val sliceDeepSleep = (dRealtime - dUptime).coerceAtLeast(0L)
                 val sliceAwake = (dUptime - dScreenOn).coerceAtLeast(0L)
@@ -177,8 +177,8 @@ class AnalyticsEngine(
         val dailySummaries = dailyMap.map { (dateStr, d) ->
             val disH = d.dischargeMs.toDouble() / 3_600_000.0
             val rate = if (disH > 0.05) ((d.dropPercent / disH) * 100.0).roundToInt() / 100.0 else 0.0
-            val screenOffMs = (d.dischargeMs - d.screenOnMs).coerceAtLeast(0L)
-            val eff = if (screenOffMs > 0) ((d.deepSleepMs.toDouble() / screenOffMs.toDouble()) * 100.0).coerceIn(0.0, 100.0) else 100.0
+            val screenOffHardwareMs = d.deepSleepMs + d.awakeScreenOffMs
+            val eff = if (screenOffHardwareMs > 0L) ((d.deepSleepMs.toDouble() / screenOffHardwareMs.toDouble()) * 100.0).coerceIn(0.0, 100.0) else 0.0
 
             DailyAnalyticsSummary(
                 dateString = dateStr,
@@ -452,8 +452,10 @@ class AnalyticsEngine(
 
         val disHours = totalDischargeMs.toDouble() / 3_600_000.0
         val avgDrainRate = if (disHours > 0.05) ((totalDischargeDrop / disHours) * 100.0).roundToInt() / 100.0 else 0.0
-        val screenOffTotal = (totalDischargeMs - totalScreenOnMs).coerceAtLeast(0L)
-        val overallSleepEff = if (screenOffTotal > 0) ((totalDeepSleepMs.toDouble() / screenOffTotal.toDouble()) * 100.0).coerceIn(0.0, 100.0) else 100.0
+        val screenOffHardwareMs = totalDeepSleepMs + totalAwakeScreenOffMs
+        val overallSleepEff = if (screenOffHardwareMs > 0L) {
+            ((totalDeepSleepMs.toDouble() / screenOffHardwareMs.toDouble()) * 100.0).coerceIn(0.0, 100.0)
+        } else 0.0
 
         val wifiH = wifiSegmentMs.toDouble() / 3_600_000.0
         val cellH = cellSegmentMs.toDouble() / 3_600_000.0
@@ -477,30 +479,32 @@ class AnalyticsEngine(
         val insights = mutableListOf<ActionableInsight>()
 
         // 1. Standby / Doze Efficiency Insight
-        if (overallSleepEff >= 75.0) {
-            insights.add(
-                ActionableInsight(
-                    title = "Optimal Doze Efficiency (${(overallSleepEff).roundToInt()}%)",
-                    description = "Your device sleeps soundly during screen-off intervals with minimal parasitic drain.",
-                    severity = InsightSeverity.SUCCESS
+        if (screenOffHardwareMs > 0L) {
+            if (overallSleepEff >= 85.0) {
+                insights.add(
+                    ActionableInsight(
+                        title = "Optimal Doze Efficiency (${(overallSleepEff).roundToInt()}%)",
+                        description = "Your device sleeps soundly during screen-off intervals with minimal parasitic drain.",
+                        severity = InsightSeverity.SUCCESS
+                    )
                 )
-            )
-        } else if (overallSleepEff >= 60.0) {
-            insights.add(
-                ActionableInsight(
-                    title = "Moderate Sleep Efficiency (${(overallSleepEff).roundToInt()}%)",
-                    description = "Your phone spends ${(totalAwakeScreenOffMs / 3_600_000.0 * 10.0).roundToInt() / 10.0}h awake in standby. Background sync and wakelocks are moderately degrading battery life.",
-                    severity = InsightSeverity.WARNING
+            } else if (overallSleepEff >= 70.0) {
+                insights.add(
+                    ActionableInsight(
+                        title = "Moderate Sleep Efficiency (${(overallSleepEff).roundToInt()}%)",
+                        description = "Your phone spends ${(totalAwakeScreenOffMs / 3_600_000.0 * 10.0).roundToInt() / 10.0}h awake in standby. Background sync and wakelocks are moderately degrading battery life.",
+                        severity = InsightSeverity.WARNING
+                    )
                 )
-            )
-        } else {
-            insights.add(
-                ActionableInsight(
-                    title = "Doze Inhibited (${(overallSleepEff).roundToInt()}%)",
-                    description = "Phone is awake for more than 40% of screen-off time. Heavy background activity is preventing deep sleep.",
-                    severity = InsightSeverity.ALERT
+            } else {
+                insights.add(
+                    ActionableInsight(
+                        title = "Doze Inhibited (${(overallSleepEff).roundToInt()}%)",
+                        description = "Phone is awake for more than 30% of screen-off time. Heavy background activity is preventing deep sleep.",
+                        severity = InsightSeverity.ALERT
+                    )
                 )
-            )
+            }
         }
 
         // 2. Wakelock Offender Insight
@@ -540,22 +544,24 @@ class AnalyticsEngine(
         }
 
         // 5. Thermal Insight
-        if (maxTemp > 42.0) {
-            insights.add(
-                ActionableInsight(
-                    title = "Elevated Battery Temperatures (${maxTemp}°C)",
-                    description = "Peak thermal events reached ${maxTemp}°C. Avoiding fast charging under heavy usage will preserve battery longevity.",
-                    severity = InsightSeverity.WARNING
+        if (temps.isNotEmpty()) {
+            if (maxTemp > 42.0) {
+                insights.add(
+                    ActionableInsight(
+                        title = "Elevated Battery Temperatures (${maxTemp}°C)",
+                        description = "Peak thermal events reached ${maxTemp}°C. Avoiding fast charging under heavy usage will preserve battery longevity.",
+                        severity = InsightSeverity.WARNING
+                    )
                 )
-            )
-        } else {
-            insights.add(
-                ActionableInsight(
-                    title = "Excellent Battery Thermals (Avg ${avgTemp}°C)",
-                    description = "Cell temperature stayed well below thermal throttling limits (peak ${maxTemp}°C), optimal for battery lifespan.",
-                    severity = InsightSeverity.SUCCESS
+            } else {
+                insights.add(
+                    ActionableInsight(
+                        title = "Excellent Battery Thermals (Avg ${avgTemp}°C)",
+                        description = "Cell temperature stayed well below thermal throttling limits (peak ${maxTemp}°C), optimal for battery lifespan.",
+                        severity = InsightSeverity.SUCCESS
+                    )
                 )
-            )
+            }
         }
 
         return OverallAnalytics(

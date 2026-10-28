@@ -227,17 +227,18 @@ fun AnalyticsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        val hasDischarge = analytics.totalDischargeHours > 0.05
                         MetricStatTile(
                             label = "DOZE EFFICIENCY",
-                            value = "${analytics.avgDeepSleepEfficiency.toInt()}",
-                            unit = "%",
-                            valueColor = if (analytics.avgDeepSleepEfficiency >= 75) GreenPrimary else if (analytics.avgDeepSleepEfficiency >= 60) CulpritAmber else CulpritRed,
+                            value = if (hasDischarge) "${analytics.avgDeepSleepEfficiency.toInt()}" else "--",
+                            unit = if (hasDischarge) "%" else "",
+                            valueColor = if (!hasDischarge) TextSecondary else if (analytics.avgDeepSleepEfficiency >= 80) GreenPrimary else if (analytics.avgDeepSleepEfficiency >= 65) CulpritAmber else CulpritRed,
                             modifier = Modifier.weight(1f)
                         )
                         MetricStatTile(
                             label = "AVG CELL TEMP",
-                            value = String.format(Locale.US, "%.1f", analytics.avgTempC),
-                            unit = "°C",
+                            value = if (analytics.avgTempC > 0.0) String.format(Locale.US, "%.1f", analytics.avgTempC) else "--",
+                            unit = if (analytics.avgTempC > 0.0) "°C" else "",
                             valueColor = if (analytics.avgTempC > 35) CulpritAmber else GreenPrimary,
                             modifier = Modifier.weight(1f)
                         )

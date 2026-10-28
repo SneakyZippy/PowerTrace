@@ -61,12 +61,21 @@ class BatterystatsCheckinParserTest {
         val checkin = """
             9,0,i,vers,36,216,BP3A.250905.014,CP3A.260905.009
             9,0,l,bt,7,4133678,1110279,15744101,12720704,1791455104184,3912300,888900,4897,4897500,4900000,0
+            9,0,l,m,221378,0,0,0,0
+            9,0,l,lv,85,78
             9,10003,l,wl,*job*r/com.digibites.accubattery/JobService,0,f,0,0,0,0,88,p,2,0,341,572,572,bp,0,0,0,0,0,w,0,0,0,0
             9,10003,l,cpu,2394386,1479213,0
             9,10003,l,nt,0,0,60571,49359,0,0,181,130,0,0,0,0,0,0,0,0,0,0,0,0,0,0
         """.trimIndent()
 
         val snapshot = parser.parse(checkin)
+        val dev = snapshot.deviceMetrics
+        assertEquals(4133678L, dev.totalRealtimeMs)
+        assertEquals(1110279L, dev.totalUptimeMs)
+        assertEquals(3912300L, dev.screenOffDurationMs)
+        assertEquals(221378L, dev.screenOnDurationMs)
+        assertEquals(78, dev.batteryLevelPercent)
+
         val uidStat = snapshot.uidMetricsMap[10003]
 
         assertNotNull(uidStat)

@@ -106,8 +106,11 @@ fun DozeSleepEfficiencyBar(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null
 ) {
+    val hasScreenOffTime = (deepSleepMs + awakeScreenOffMs) > 0L
     val screenOffTotalMs = (deepSleepMs + awakeScreenOffMs).coerceAtLeast(1L).toFloat()
-    val deepSleepOfScreenOff = ((deepSleepMs.toDouble() / screenOffTotalMs.toDouble()) * 100.0).toInt().coerceIn(0, 100)
+    val deepSleepOfScreenOff = if (hasScreenOffTime) {
+        ((deepSleepMs.toDouble() / screenOffTotalMs.toDouble()) * 100.0).toInt().coerceIn(0, 100)
+    } else 0
     val awakeOfScreenOff = (100 - deepSleepOfScreenOff).coerceIn(0, 100)
 
     val totalMs = (deepSleepMs + awakeScreenOffMs + screenOnMs).coerceAtLeast(1L).toFloat()
@@ -136,9 +139,9 @@ fun DozeSleepEfficiencyBar(
                 }
             }
             Text(
-                text = "Deep Sleep: $deepSleepOfScreenOff% of idle",
+                text = if (hasScreenOffTime) "Deep Sleep: $deepSleepOfScreenOff% of idle" else "Deep Sleep: -- (Screen active)",
                 style = MaterialTheme.typography.labelSmall,
-                color = if (deepSleepOfScreenOff >= 85) GreenPrimary else if (deepSleepOfScreenOff >= 70) CulpritAmber else CulpritRed,
+                color = if (!hasScreenOffTime) TextSecondary else if (deepSleepOfScreenOff >= 80) GreenPrimary else if (deepSleepOfScreenOff >= 65) CulpritAmber else CulpritRed,
                 fontWeight = FontWeight.Bold
             )
         }
