@@ -207,8 +207,8 @@ class ContinuousMonitoringService : Service() {
 
             // Update notification
             val tempC = dev.temperatureDeciCelsius / 10.0
-            val status = if (isCharging) "Charging ⚡" else "Monitoring"
-            val text = "Battery: ${dev.batteryLevelPercent}% • $status • ${String.format(java.util.Locale.US, "%.1f", tempC)}°C"
+            val chargingStatusText = if (isCharging) "Charging ⚡" else "Monitoring"
+            val text = "Battery: ${dev.batteryLevelPercent}% • $chargingStatusText • ${String.format(java.util.Locale.US, "%.1f", tempC)}°C"
             val manager = getSystemService(NotificationManager::class.java)
             manager.notify(NOTIFICATION_ID, buildNotification(text))
 

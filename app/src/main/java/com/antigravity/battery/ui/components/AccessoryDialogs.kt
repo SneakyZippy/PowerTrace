@@ -209,9 +209,6 @@ fun AddCableDialog(
                 fontWeight = FontWeight.Bold
             )
         },
-                fontWeight = FontWeight.Bold
-            )
-        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
