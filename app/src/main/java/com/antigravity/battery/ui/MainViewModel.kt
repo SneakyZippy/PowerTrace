@@ -279,8 +279,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val (startMs, endMs) = computeTimeBounds(_selectedTimeFilter.value, nowMs)
 
             val lightSnapshots = if (_selectedTimeFilter.value == TimeWindowFilter.SINCE_LAST_CHARGE) {
-                val lastCharge = continuousDao.getLastFullChargeSnapshot()
-                val since = lastCharge?.timestampMs ?: (nowMs - 24 * 3600 * 1000L)
+                val since = getSinceUnpluggedTimestamp(nowMs)
                 continuousDao.getLightweightSnapshotsSince(since)
             } else {
                 continuousDao.getLightweightSnapshotsBetween(startMs, endMs)
@@ -369,10 +368,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 Pair(nowMs - (7 * 24 * 3600 * 1000L), nowMs)
             }
             TimeWindowFilter.SINCE_LAST_CHARGE -> {
-                val lastCharge = continuousDao.getLastFullChargeSnapshot()
-                val start = lastCharge?.timestampMs ?: (nowMs - 24 * 3600 * 1000L)
+                val start = getSinceUnpluggedTimestamp(nowMs)
                 Pair(start, nowMs)
             }
+        }
+    }
+
+    private suspend fun getSinceUnpluggedTimestamp(nowMs: Long): Long {
+        val latest = continuousDao.getLatestSnapshot() ?: return (nowMs - 24 * 3600 * 1000L)
+        return if (!latest.isCharging) {
+            // Currently on battery: start from when the charger was unplugged
+            val lastCharging = continuousDao.getLastChargingSnapshot()
+            lastCharging?.timestampMs ?: (nowMs - 24 * 3600 * 1000L)
+        } else {
+            // Currently charging: start from when the current charge session began
+            val lastDischarging = continuousDao.getLastDischargingSnapshot()
+            lastDischarging?.timestampMs ?: (nowMs - 24 * 3600 * 1000L)
         }
     }
 

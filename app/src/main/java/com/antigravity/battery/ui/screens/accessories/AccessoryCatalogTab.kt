@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Power
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -58,8 +59,10 @@ fun AccessoryCatalogTab(
     cables: List<Cable>,
     sessions: List<ChargeTestSession>,
     onAddBrick: () -> Unit,
+    onEditBrick: (PowerBrick) -> Unit,
     onDeleteBrick: (PowerBrick) -> Unit,
     onAddCable: () -> Unit,
+    onEditCable: (Cable) -> Unit,
     onDeleteCable: (Cable) -> Unit
 ) {
     var subTab by remember { mutableIntStateOf(0) }
@@ -142,7 +145,9 @@ fun AccessoryCatalogTab(
                         val maxW = brickSessions.maxOfOrNull { it.peakWattage } ?: 0f
 
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onEditBrick(brick) },
                             shape = RoundedCornerShape(14.dp),
                             colors = CardDefaults.cardColors(containerColor = DarkSurface)
                         ) {
@@ -173,6 +178,9 @@ fun AccessoryCatalogTab(
                                         style = MaterialTheme.typography.labelSmall,
                                         color = if (maxW > 0f) GreenPrimary else TextSecondary
                                     )
+                                }
+                                IconButton(onClick = { onEditBrick(brick) }) {
+                                    Icon(Icons.Default.Edit, contentDescription = "Edit", tint = TextSecondary.copy(alpha = 0.8f))
                                 }
                                 IconButton(onClick = { onDeleteBrick(brick) }) {
                                     Icon(Icons.Default.Delete, contentDescription = "Delete", tint = TextSecondary.copy(alpha = 0.6f))
@@ -217,7 +225,9 @@ fun AccessoryCatalogTab(
                         val maxW = cableSessions.maxOfOrNull { it.peakWattage } ?: 0f
 
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onEditCable(cable) },
                             shape = RoundedCornerShape(14.dp),
                             colors = CardDefaults.cardColors(containerColor = DarkSurface)
                         ) {
@@ -248,6 +258,9 @@ fun AccessoryCatalogTab(
                                         style = MaterialTheme.typography.labelSmall,
                                         color = if (maxW > 0f) AccentBlue else TextSecondary
                                     )
+                                }
+                                IconButton(onClick = { onEditCable(cable) }) {
+                                    Icon(Icons.Default.Edit, contentDescription = "Edit", tint = TextSecondary.copy(alpha = 0.8f))
                                 }
                                 IconButton(onClick = { onDeleteCable(cable) }) {
                                     Icon(Icons.Default.Delete, contentDescription = "Delete", tint = TextSecondary.copy(alpha = 0.6f))

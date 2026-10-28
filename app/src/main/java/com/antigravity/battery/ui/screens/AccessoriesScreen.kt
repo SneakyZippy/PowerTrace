@@ -71,6 +71,8 @@ fun AccessoriesScreen(
 
     var showAddBrickDialog by remember { mutableStateOf(false) }
     var showAddCableDialog by remember { mutableStateOf(false) }
+    var editingBrick by remember { mutableStateOf<PowerBrick?>(null) }
+    var editingCable by remember { mutableStateOf<Cable?>(null) }
     var isSimulating by remember { mutableStateOf(false) }
 
     var selectedHudBrickId by remember { mutableStateOf<String?>(null) }
@@ -171,8 +173,10 @@ fun AccessoriesScreen(
                     cables = cables,
                     sessions = chargingSessions,
                     onAddBrick = { showAddBrickDialog = true },
+                    onEditBrick = { editingBrick = it },
                     onDeleteBrick = onDeleteBrick,
                     onAddCable = { showAddCableDialog = true },
+                    onEditCable = { editingCable = it },
                     onDeleteCable = onDeleteCable
                 )
                 2 -> LeaderboardTab(
@@ -223,6 +227,30 @@ fun AccessoriesScreen(
                     onSaveCable(cable)
                     selectedHudCableId = cable.id
                     showAddCableDialog = false
+                }
+            )
+        }
+
+        // Edit Brick Dialog
+        if (editingBrick != null) {
+            AddPowerBrickDialog(
+                initialBrick = editingBrick,
+                onDismiss = { editingBrick = null },
+                onConfirm = { updated ->
+                    onSaveBrick(updated)
+                    editingBrick = null
+                }
+            )
+        }
+
+        // Edit Cable Dialog
+        if (editingCable != null) {
+            AddCableDialog(
+                initialCable = editingCable,
+                onDismiss = { editingCable = null },
+                onConfirm = { updated ->
+                    onSaveCable(updated)
+                    editingCable = null
                 }
             )
         }

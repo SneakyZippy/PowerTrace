@@ -174,8 +174,19 @@ class ContinuousMonitoringService : Service() {
             val snapshot = snapshotManager.captureSnapshot(nowMs)
             val dev = snapshot.deviceMetrics
 
+            val batteryStatus = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val plugged = batteryStatus?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: 0
+            val status = batteryStatus?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+            val isPlugged = plugged == BatteryManager.BATTERY_PLUGGED_AC ||
+                    plugged == BatteryManager.BATTERY_PLUGGED_USB ||
+                    plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS ||
+                    (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && plugged == BatteryManager.BATTERY_PLUGGED_DOCK)
+
             val bm = getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
-            val isCharging = bm?.isCharging ?: false
+            val bmCharging = bm?.isCharging ?: false
+            val isCharging = isPlugged && (status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                    status == BatteryManager.BATTERY_STATUS_FULL ||
+                    bmCharging)
 
             val entity = PeriodicSnapshotEntity(
                 timestampMs = nowMs,

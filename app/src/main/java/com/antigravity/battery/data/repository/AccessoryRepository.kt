@@ -35,6 +35,7 @@ class AccessoryRepository(private val accessoryDao: AccessoryDao) {
 
     suspend fun saveBrick(brick: PowerBrick) {
         accessoryDao.insertBrick(brick.toEntity())
+        accessoryDao.updateSessionBrickName(brick.id, brick.name)
     }
 
     suspend fun deleteBrick(brick: PowerBrick) {
@@ -43,6 +44,7 @@ class AccessoryRepository(private val accessoryDao: AccessoryDao) {
 
     suspend fun saveCable(cable: Cable) {
         accessoryDao.insertCable(cable.toEntity())
+        accessoryDao.updateSessionCableName(cable.id, cable.name)
     }
 
     suspend fun deleteCable(cable: Cable) {

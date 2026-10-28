@@ -56,6 +56,12 @@ interface AccessoryDao {
     @Query("SELECT * FROM charge_test_sessions WHERE cableId = :cableId ORDER BY peakWattage DESC")
     fun getSessionsForCable(cableId: String): Flow<List<ChargeTestSessionEntity>>
 
+    @Query("UPDATE charge_test_sessions SET brickName = :newName WHERE brickId = :brickId")
+    suspend fun updateSessionBrickName(brickId: String, newName: String)
+
+    @Query("UPDATE charge_test_sessions SET cableName = :newName WHERE cableId = :cableId")
+    suspend fun updateSessionCableName(cableId: String, newName: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSession(session: ChargeTestSessionEntity)
 

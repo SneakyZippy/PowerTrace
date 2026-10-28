@@ -50,6 +50,12 @@ interface ContinuousSnapshotDao {
     @Query("SELECT * FROM periodic_snapshots WHERE isCharging = 1 AND batteryLevel >= 90 ORDER BY timestampMs DESC LIMIT 1")
     suspend fun getLastFullChargeSnapshot(): PeriodicSnapshotEntity?
 
+    @Query("SELECT * FROM periodic_snapshots WHERE isCharging = 1 ORDER BY timestampMs DESC LIMIT 1")
+    suspend fun getLastChargingSnapshot(): PeriodicSnapshotEntity?
+
+    @Query("SELECT * FROM periodic_snapshots WHERE isCharging = 0 ORDER BY timestampMs DESC LIMIT 1")
+    suspend fun getLastDischargingSnapshot(): PeriodicSnapshotEntity?
+
     @Query("SELECT * FROM periodic_snapshots WHERE timestampMs >= :sinceMs ORDER BY timestampMs ASC")
     suspend fun getSnapshotsSince(sinceMs: Long): List<PeriodicSnapshotEntity>
 

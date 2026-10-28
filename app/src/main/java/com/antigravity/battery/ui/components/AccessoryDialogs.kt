@@ -31,13 +31,22 @@ import com.antigravity.battery.ui.theme.TextSecondary
 
 @Composable
 fun AddPowerBrickDialog(
+    initialBrick: PowerBrick? = null,
     onDismiss: () -> Unit,
     onConfirm: (PowerBrick) -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var manufacturer by remember { mutableStateOf("") }
-    var wattageText by remember { mutableStateOf("65") }
-    var portType by remember { mutableStateOf("USB-C") }
+    var name by remember { mutableStateOf(initialBrick?.name ?: "") }
+    var manufacturer by remember { mutableStateOf(initialBrick?.manufacturer ?: "") }
+    var wattageText by remember {
+        mutableStateOf(
+            initialBrick?.let {
+                if (it.ratedWattage > 0f) {
+                    if (it.ratedWattage % 1f == 0f) it.ratedWattage.toInt().toString() else it.ratedWattage.toString()
+                } else ""
+            } ?: "65"
+        )
+    }
+    var portType by remember { mutableStateOf(initialBrick?.portType ?: "USB-C") }
     var showError by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -45,7 +54,7 @@ fun AddPowerBrickDialog(
         containerColor = DarkSurface,
         title = {
             Text(
-                text = "Add Power Brick",
+                text = if (initialBrick != null) "Edit Power Brick" else "Add Power Brick",
                 color = TextPrimary,
                 fontWeight = FontWeight.Bold
             )
@@ -132,18 +141,27 @@ fun AddPowerBrickDialog(
                     if (name.isBlank()) {
                         showError = true
                     } else {
-                        val brick = PowerBrick(
+                        val brick = (initialBrick?.copy(
                             name = name.trim(),
                             manufacturer = manufacturer.trim(),
                             ratedWattage = wattageText.toFloatOrNull() ?: 0f,
                             portType = portType.trim().ifBlank { "USB-C" }
-                        )
+                        ) ?: PowerBrick(
+                            name = name.trim(),
+                            manufacturer = manufacturer.trim(),
+                            ratedWattage = wattageText.toFloatOrNull() ?: 0f,
+                            portType = portType.trim().ifBlank { "USB-C" }
+                        ))
                         onConfirm(brick)
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary)
             ) {
-                Text("Add Brick", color = DarkBackground, fontWeight = FontWeight.Bold)
+                Text(
+                    text = if (initialBrick != null) "Save Changes" else "Add Brick",
+                    color = DarkBackground,
+                    fontWeight = FontWeight.Bold
+                )
             }
         },
         dismissButton = {
@@ -156,14 +174,29 @@ fun AddPowerBrickDialog(
 
 @Composable
 fun AddCableDialog(
+    initialCable: Cable? = null,
     onDismiss: () -> Unit,
     onConfirm: (Cable) -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var manufacturer by remember { mutableStateOf("") }
-    var wattageText by remember { mutableStateOf("100") }
-    var lengthText by remember { mutableStateOf("1.0") }
-    var cableType by remember { mutableStateOf("Type-C to Type-C") }
+    var name by remember { mutableStateOf(initialCable?.name ?: "") }
+    var manufacturer by remember { mutableStateOf(initialCable?.manufacturer ?: "") }
+    var wattageText by remember {
+        mutableStateOf(
+            initialCable?.let {
+                if (it.ratedWattage > 0f) {
+                    if (it.ratedWattage % 1f == 0f) it.ratedWattage.toInt().toString() else it.ratedWattage.toString()
+                } else ""
+            } ?: "100"
+        )
+    }
+    var lengthText by remember {
+        mutableStateOf(
+            initialCable?.let {
+                if (it.lengthMeters % 1f == 0f) it.lengthMeters.toInt().toString() else it.lengthMeters.toString()
+            } ?: "1.0"
+        )
+    }
+    var cableType by remember { mutableStateOf(initialCable?.cableType ?: "Type-C to Type-C") }
     var showError by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -171,8 +204,11 @@ fun AddCableDialog(
         containerColor = DarkSurface,
         title = {
             Text(
-                text = "Add Charging Cable",
+                text = if (initialCable != null) "Edit Charging Cable" else "Add Charging Cable",
                 color = TextPrimary,
+                fontWeight = FontWeight.Bold
+            )
+        },
                 fontWeight = FontWeight.Bold
             )
         },
@@ -275,19 +311,29 @@ fun AddCableDialog(
                     if (name.isBlank()) {
                         showError = true
                     } else {
-                        val cable = Cable(
+                        val cable = (initialCable?.copy(
                             name = name.trim(),
                             manufacturer = manufacturer.trim(),
                             ratedWattage = wattageText.toFloatOrNull() ?: 0f,
                             lengthMeters = lengthText.toFloatOrNull() ?: 1.0f,
                             cableType = cableType.trim().ifBlank { "Type-C to Type-C" }
-                        )
+                        ) ?: Cable(
+                            name = name.trim(),
+                            manufacturer = manufacturer.trim(),
+                            ratedWattage = wattageText.toFloatOrNull() ?: 0f,
+                            lengthMeters = lengthText.toFloatOrNull() ?: 1.0f,
+                            cableType = cableType.trim().ifBlank { "Type-C to Type-C" }
+                        ))
                         onConfirm(cable)
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
             ) {
-                Text("Add Cable", color = DarkBackground, fontWeight = FontWeight.Bold)
+                Text(
+                    text = if (initialCable != null) "Save Changes" else "Add Cable",
+                    color = DarkBackground,
+                    fontWeight = FontWeight.Bold
+                )
             }
         },
         dismissButton = {
