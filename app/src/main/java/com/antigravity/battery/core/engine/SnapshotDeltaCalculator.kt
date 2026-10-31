@@ -34,14 +34,18 @@ class SnapshotDeltaCalculator(
         }
 
         // Monotonic duration calculations
-        val rawDurationMs = end.timestampMs - start.timestampMs
-        val realtimeMs = if (!isRebootDetected) {
-            (endDev.totalRealtimeMs - startDev.totalRealtimeMs).coerceAtLeast(0L)
+        val rawDurationMs = (end.timestampMs - start.timestampMs).coerceAtLeast(0L)
+        // Detect batterystats reset anomaly (e.g. when connecting/disconnecting charger resets batterystats counters)
+        val deltaRealtime = (endDev.totalRealtimeMs - startDev.totalRealtimeMs).coerceAtLeast(0L)
+        val isStatsReset = !isRebootDetected && rawDurationMs >= 180_000L && deltaRealtime < (rawDurationMs / 2)
+
+        val realtimeMs = if (!isRebootDetected && !isStatsReset) {
+            deltaRealtime
         } else {
-            rawDurationMs.coerceAtLeast(0L)
+            rawDurationMs
         }
 
-        val rawUptime = if (!isRebootDetected) {
+        val rawUptime = if (!isRebootDetected && !isStatsReset) {
             (endDev.totalUptimeMs - startDev.totalUptimeMs).coerceAtLeast(0L)
         } else {
             (rawDurationMs * 0.7).toLong()

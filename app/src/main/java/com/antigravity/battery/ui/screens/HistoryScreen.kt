@@ -47,6 +47,7 @@ import com.antigravity.battery.ui.theme.DarkSurface
 import com.antigravity.battery.ui.theme.GreenPrimary
 import com.antigravity.battery.ui.theme.TextPrimary
 import com.antigravity.battery.ui.theme.TextSecondary
+import com.antigravity.battery.ui.util.TimeFormatUtils
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -62,7 +63,6 @@ fun HistoryScreen(
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy • HH:mm", Locale.getDefault()) }
-    var sessionToExport by remember { mutableStateOf<SessionEntity?>(null) }
 
     Column(
         modifier = Modifier
@@ -137,7 +137,7 @@ fun HistoryScreen(
                                         color = TextPrimary
                                     )
                                     Text(
-                                        text = dateFormat.format(Date(session.startTimeMs)),
+                                        text = "${dateFormat.format(Date(session.startTimeMs))} (${TimeFormatUtils.formatTimeRange(session.startTimeMs, session.endTimeMs)})",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = TextSecondary
                                     )
@@ -163,9 +163,8 @@ fun HistoryScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                val durationHours = session.durationMs.toDouble() / 3_600_000.0
                                 Text(
-                                    text = "Duration: ${String.format(Locale.US, "%.1f", durationHours)} hrs",
+                                    text = "Duration: ${TimeFormatUtils.formatDurationHuman(session.durationMs)}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = TextSecondary
                                 )

@@ -118,6 +118,23 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         const val PREF_KEY_DISCONNECT_GRACE_ENABLED = "disconnect_grace_enabled"
         const val PREF_KEY_DISCONNECT_GRACE_SECONDS = "disconnect_grace_seconds"
 
+        const val PREF_KEY_ACTIVE_SESSION_ID = "active_charge_session_id"
+        const val PREF_KEY_ACTIVE_START_TIME_MS = "active_charge_start_time_ms"
+        const val PREF_KEY_ACTIVE_START_LEVEL = "active_charge_start_level"
+        const val PREF_KEY_ACTIVE_START_TEMP = "active_charge_start_temp"
+        const val PREF_KEY_ACTIVE_BRICK_ID = "active_charge_brick_id"
+        const val PREF_KEY_ACTIVE_CABLE_ID = "active_charge_cable_id"
+        const val PREF_KEY_ACTIVE_BRICK_NAME = "active_charge_brick_name"
+        const val PREF_KEY_ACTIVE_CABLE_NAME = "active_charge_cable_name"
+        const val PREF_KEY_ACTIVE_PEAK_WATTAGE = "active_charge_peak_wattage"
+        const val PREF_KEY_ACTIVE_PEAK_CURRENT = "active_charge_peak_current"
+        const val PREF_KEY_ACTIVE_MIN_VOLTAGE = "active_charge_min_voltage"
+        const val PREF_KEY_ACTIVE_MAX_VOLTAGE = "active_charge_max_voltage"
+        const val PREF_KEY_ACTIVE_MAX_TEMP = "active_charge_max_temp"
+        const val PREF_KEY_ACTIVE_WATTAGE_SUM = "active_charge_wattage_sum"
+        const val PREF_KEY_ACTIVE_SAMPLE_COUNT = "active_charge_sample_count"
+        const val PREF_KEY_ACTIVE_IS_THROTTLED = "active_charge_is_throttled"
+
         const val DEFAULT_MIN_DURATION_MINUTES = 0
         const val DEFAULT_MIN_BATTERY_GAIN = 0
         const val DEFAULT_DISCONNECT_GRACE_SECONDS = 60
@@ -152,10 +169,81 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
                 (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && plugged == BatteryManager.BATTERY_PLUGGED_DOCK)
 
         if (lastKnownPlugged) {
-            startSession()
+            if (!restoreActiveSession()) {
+                startSession()
+            } else {
+                startPolling()
+            }
         } else {
+            clearPersistedActiveSession()
             sampleCurrentState()
         }
+    }
+
+    private fun persistActiveSession() {
+        if (sessionStartTimeMs <= 0L) return
+        prefs.edit()
+            .putString(PREF_KEY_ACTIVE_SESSION_ID, activeSessionId)
+            .putLong(PREF_KEY_ACTIVE_START_TIME_MS, sessionStartTimeMs)
+            .putInt(PREF_KEY_ACTIVE_START_LEVEL, startBatteryLevel)
+            .putInt(PREF_KEY_ACTIVE_START_TEMP, startTempDeciC)
+            .putString(PREF_KEY_ACTIVE_BRICK_ID, activeBrickId)
+            .putString(PREF_KEY_ACTIVE_CABLE_ID, activeCableId)
+            .putString(PREF_KEY_ACTIVE_BRICK_NAME, activeBrickName)
+            .putString(PREF_KEY_ACTIVE_CABLE_NAME, activeCableName)
+            .putFloat(PREF_KEY_ACTIVE_PEAK_WATTAGE, peakWattage)
+            .putInt(PREF_KEY_ACTIVE_PEAK_CURRENT, peakCurrentMa)
+            .putInt(PREF_KEY_ACTIVE_MIN_VOLTAGE, minVoltageMv)
+            .putInt(PREF_KEY_ACTIVE_MAX_VOLTAGE, maxVoltageMv)
+            .putInt(PREF_KEY_ACTIVE_MAX_TEMP, maxTempDeciC)
+            .putFloat(PREF_KEY_ACTIVE_WATTAGE_SUM, wattageSum.toFloat())
+            .putInt(PREF_KEY_ACTIVE_SAMPLE_COUNT, sampleCount)
+            .putBoolean(PREF_KEY_ACTIVE_IS_THROTTLED, isThrottled)
+            .apply()
+    }
+
+    private fun restoreActiveSession(): Boolean {
+        val savedStartTime = prefs.getLong(PREF_KEY_ACTIVE_START_TIME_MS, 0L)
+        if (savedStartTime <= 0L) return false
+
+        activeSessionId = prefs.getString(PREF_KEY_ACTIVE_SESSION_ID, null) ?: UUID.randomUUID().toString()
+        sessionStartTimeMs = savedStartTime
+        startBatteryLevel = prefs.getInt(PREF_KEY_ACTIVE_START_LEVEL, -1)
+        startTempDeciC = prefs.getInt(PREF_KEY_ACTIVE_START_TEMP, 0)
+        activeBrickId = prefs.getString(PREF_KEY_ACTIVE_BRICK_ID, null)
+        activeCableId = prefs.getString(PREF_KEY_ACTIVE_CABLE_ID, null)
+        activeBrickName = prefs.getString(PREF_KEY_ACTIVE_BRICK_NAME, "Unspecified Charger") ?: "Unspecified Charger"
+        activeCableName = prefs.getString(PREF_KEY_ACTIVE_CABLE_NAME, "Unspecified Cable") ?: "Unspecified Cable"
+        peakWattage = prefs.getFloat(PREF_KEY_ACTIVE_PEAK_WATTAGE, 0f)
+        peakCurrentMa = prefs.getInt(PREF_KEY_ACTIVE_PEAK_CURRENT, 0)
+        minVoltageMv = prefs.getInt(PREF_KEY_ACTIVE_MIN_VOLTAGE, Int.MAX_VALUE)
+        maxVoltageMv = prefs.getInt(PREF_KEY_ACTIVE_MAX_VOLTAGE, 0)
+        maxTempDeciC = prefs.getInt(PREF_KEY_ACTIVE_MAX_TEMP, 0)
+        wattageSum = prefs.getFloat(PREF_KEY_ACTIVE_WATTAGE_SUM, 0f).toDouble()
+        sampleCount = prefs.getInt(PREF_KEY_ACTIVE_SAMPLE_COUNT, 0)
+        isThrottled = prefs.getBoolean(PREF_KEY_ACTIVE_IS_THROTTLED, false)
+        return true
+    }
+
+    private fun clearPersistedActiveSession() {
+        prefs.edit()
+            .remove(PREF_KEY_ACTIVE_SESSION_ID)
+            .remove(PREF_KEY_ACTIVE_START_TIME_MS)
+            .remove(PREF_KEY_ACTIVE_START_LEVEL)
+            .remove(PREF_KEY_ACTIVE_START_TEMP)
+            .remove(PREF_KEY_ACTIVE_BRICK_ID)
+            .remove(PREF_KEY_ACTIVE_CABLE_ID)
+            .remove(PREF_KEY_ACTIVE_BRICK_NAME)
+            .remove(PREF_KEY_ACTIVE_CABLE_NAME)
+            .remove(PREF_KEY_ACTIVE_PEAK_WATTAGE)
+            .remove(PREF_KEY_ACTIVE_PEAK_CURRENT)
+            .remove(PREF_KEY_ACTIVE_MIN_VOLTAGE)
+            .remove(PREF_KEY_ACTIVE_MAX_VOLTAGE)
+            .remove(PREF_KEY_ACTIVE_MAX_TEMP)
+            .remove(PREF_KEY_ACTIVE_WATTAGE_SUM)
+            .remove(PREF_KEY_ACTIVE_SAMPLE_COUNT)
+            .remove(PREF_KEY_ACTIVE_IS_THROTTLED)
+            .apply()
     }
 
     fun isAutoPromptEnabled(): Boolean = prefs.getBoolean(PREF_KEY_AUTO_PROMPT_ENABLED, true)
@@ -207,6 +295,10 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
             } else {
                 finalizePausedSession()
             }
+        } else if (sessionStartTimeMs <= 0L && restoreActiveSession()) {
+            // Restored ongoing session from persistent storage
+            startPolling()
+            return
         }
 
         startSession()
@@ -228,7 +320,8 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         val durationMs = if (sessionStartTimeMs > 0L) nowMs - sessionStartTimeMs else 0L
 
         // If no active session or it was less than 5s with few samples, don't pause it for resume
-        if (sessionStartTimeMs == 0L || sampleCount < 2 || durationMs < 5_000L) {
+        if (sessionStartTimeMs == 0L || (sampleCount < 2 && durationMs < 5_000L)) {
+            clearPersistedActiveSession()
             sessionStartTimeMs = 0L
             peakWattage = 0f
             peakCurrentMa = 0
@@ -292,6 +385,12 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
             maxTempDeciC = paused.maxTempDeciC,
             isThrottled = paused.isThrottled
         )
+
+        // Auto-save completed session immediately so long/overnight sessions are safely preserved
+        scope.launch {
+            repository.saveSession(session, paused.samples)
+        }
+        clearPersistedActiveSession()
 
         val autoPrompt = isAutoPromptEnabled()
 
@@ -480,6 +579,7 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         startBatteryLevel = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         startTempDeciC = batteryStatus?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
 
+        persistActiveSession()
         startPolling()
     }
 
@@ -511,6 +611,12 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
             maxTempDeciC = maxTempDeciC,
             isThrottled = isThrottled
         )
+
+        // Auto-save session immediately to Room database
+        scope.launch {
+            repository.saveSession(session, samplesList.toList())
+        }
+        clearPersistedActiveSession()
 
         // Check if session qualifies for prompt
         val autoPrompt = isAutoPromptEnabled()
@@ -652,9 +758,13 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
                 sessionStartTimeMs = nowMs
                 startBatteryLevel = level
                 startTempDeciC = tempDeciC
+                persistActiveSession()
             }
 
-            if (wattage > peakWattage) peakWattage = wattage
+            if (wattage > peakWattage) {
+                peakWattage = wattage
+                persistActiveSession()
+            }
             if (chargingCurrentMa > peakCurrentMa) peakCurrentMa = chargingCurrentMa
             if (voltageMv in 1 until minVoltageMv) minVoltageMv = voltageMv
             if (voltageMv > maxVoltageMv) maxVoltageMv = voltageMv
@@ -662,6 +772,9 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
 
             wattageSum += wattage
             sampleCount++
+            if (sampleCount % 15 == 0) {
+                persistActiveSession()
+            }
 
             // Throttling logic: high temp and wattage dropped below 60% of peak while battery not full
             if (tempDeciC >= 390 && level < 75 && peakWattage > 10f && wattage < (peakWattage * 0.6f)) {

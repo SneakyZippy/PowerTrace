@@ -30,6 +30,7 @@ import com.antigravity.battery.core.model.PowerBrick
 import com.antigravity.battery.ui.components.AddCableDialog
 import com.antigravity.battery.ui.components.AddPowerBrickDialog
 import com.antigravity.battery.ui.screens.accessories.AccessoryCatalogTab
+import com.antigravity.battery.ui.screens.accessories.ChargingHistoryTab
 import com.antigravity.battery.ui.screens.accessories.LeaderboardTab
 import com.antigravity.battery.ui.screens.accessories.LiveChargeHudTab
 import com.antigravity.battery.ui.theme.DarkBackground
@@ -67,7 +68,7 @@ fun AccessoriesScreen(
     }
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Live HUD", "Catalog", "Leaderboard")
+    val tabs = listOf("Live HUD", "Catalog & Combos", "History", "Leaderboard")
 
     var showAddBrickDialog by remember { mutableStateOf(false) }
     var showAddCableDialog by remember { mutableStateOf(false) }
@@ -177,9 +178,15 @@ fun AccessoriesScreen(
                     onDeleteBrick = onDeleteBrick,
                     onAddCable = { showAddCableDialog = true },
                     onEditCable = { editingCable = it },
-                    onDeleteCable = onDeleteCable
+                    onDeleteCable = onDeleteCable,
+                    onSelectSession = { selectedSessionForDetail = it }
                 )
-                2 -> LeaderboardTab(
+                2 -> ChargingHistoryTab(
+                    sessions = chargingSessions,
+                    onSelectSession = { selectedSessionForDetail = it },
+                    onDeleteSession = onDeleteSession
+                )
+                3 -> LeaderboardTab(
                     sessions = chargingSessions,
                     onSelectSession = { selectedSessionForDetail = it },
                     onDeleteSession = onDeleteSession

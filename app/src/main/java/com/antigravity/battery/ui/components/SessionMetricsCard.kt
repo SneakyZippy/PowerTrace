@@ -31,6 +31,7 @@ import com.antigravity.battery.ui.theme.DarkSurface
 import com.antigravity.battery.ui.theme.GreenPrimary
 import com.antigravity.battery.ui.theme.TextPrimary
 import com.antigravity.battery.ui.theme.TextSecondary
+import com.antigravity.battery.ui.util.TimeFormatUtils
 import java.util.Locale
 
 @Composable
@@ -53,7 +54,7 @@ fun SessionMetricsSummaryCard(
             ) {
                 MetricItem("Peak Power", String.format(Locale.US, "%.1f W", session.peakWattage), GreenPrimary)
                 MetricItem("Avg Power", String.format(Locale.US, "%.1f W", session.avgWattage), TextPrimary)
-                MetricItem("Duration", "${durationMin}m", AccentBlue)
+                MetricItem("Duration", TimeFormatUtils.formatDurationHuman(session.durationMs), AccentBlue)
                 MetricItem("Gained", "+${session.batteryGained}%", GreenPrimary)
             }
 

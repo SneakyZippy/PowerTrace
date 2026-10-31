@@ -49,6 +49,7 @@ import com.antigravity.battery.ui.theme.DarkSurface
 import com.antigravity.battery.ui.theme.GreenPrimary
 import com.antigravity.battery.ui.theme.TextPrimary
 import com.antigravity.battery.ui.theme.TextSecondary
+import com.antigravity.battery.ui.util.TimeFormatUtils
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -249,7 +250,7 @@ fun LeaderboardTab(
                                     color = TextPrimary
                                 )
                                 Text(
-                                    text = "${dateFormat.format(Date(session.startTimeMs))} • Tap for curve graph",
+                                    text = "${dateFormat.format(Date(session.startTimeMs))} (${TimeFormatUtils.formatTimeRange(session.startTimeMs, session.endTimeMs)}) • ${TimeFormatUtils.formatDurationHuman(session.durationMs)}",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = TextSecondary
                                 )

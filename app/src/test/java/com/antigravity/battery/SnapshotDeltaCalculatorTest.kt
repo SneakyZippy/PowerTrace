@@ -79,4 +79,38 @@ class SnapshotDeltaCalculatorTest {
         assertNotNull(gmsCulprit)
         assertEquals(64 - 12, gmsCulprit!!.wakeupAlarmCount)
     }
+
+    @Test
+    fun testBatterystatsResetAnomalyFallsBackToRawDuration() = runBlocking {
+        val mockSource = MockDiagnosticDumpSource()
+        val snapshotManager = SnapshotManager(mockSource)
+
+        // Session ran for 3 hours (10,800,000 ms) in wall clock time
+        val startTime = 1700000000000L
+        val endTime = startTime + (3 * 3600 * 1000L)
+
+        mockSource.setSnapshotStage(endSnapshot = false)
+        val start = snapshotManager.captureSnapshot(startTime)
+
+        // Simulate end snapshot where Android Batterystats reset its internal realtime counter
+        // to only 180,000 ms (3 minutes) instead of 10,800,000 ms
+        mockSource.setSnapshotStage(endSnapshot = true)
+        val endRaw = snapshotManager.captureSnapshot(endTime)
+        val corruptedDevice = endRaw.deviceMetrics.copy(
+            totalRealtimeMs = start.deviceMetrics.totalRealtimeMs + 180_000L // 3 minutes!
+        )
+        val end = endRaw.copy(deviceMetrics = corruptedDevice)
+
+        val powerProfile = PowerProfileData(cpuAwakeMa = 28.0)
+        val attributionModel = EnergyAttributionModel(powerProfile)
+        val detector = WakeupCulpritDetector()
+        val resolver = TestUidResolver()
+
+        val calculator = SnapshotDeltaCalculator(attributionModel, detector, resolver)
+        val delta = calculator.computeDelta(start, end)
+
+        // Must recover 3 hours (10,800,000 ms), NOT 3 minutes!
+        assertEquals(3 * 3600 * 1000L, delta.durationMs)
+        assertEquals(3 * 3600 * 1000L, delta.realtimeMs)
+    }
 }

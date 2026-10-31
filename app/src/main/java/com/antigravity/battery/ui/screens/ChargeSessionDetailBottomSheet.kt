@@ -61,6 +61,7 @@ import com.antigravity.battery.ui.theme.DarkSurfaceVariant
 import com.antigravity.battery.ui.theme.GreenPrimary
 import com.antigravity.battery.ui.theme.TextPrimary
 import com.antigravity.battery.ui.theme.TextSecondary
+import com.antigravity.battery.ui.util.TimeFormatUtils
 import kotlinx.coroutines.flow.Flow
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -83,7 +84,6 @@ fun ChargeSessionDetailBottomSheet(
     var showEditDialog by remember { mutableStateOf(false) }
 
     val dateFormat = SimpleDateFormat("MMM dd, yyyy • HH:mm", Locale.getDefault())
-    val durationMin = (currentSession.durationMs / 60000).coerceAtLeast(1)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -122,7 +122,7 @@ fun ChargeSessionDetailBottomSheet(
                             color = TextPrimary
                         )
                         Text(
-                            text = dateFormat.format(Date(currentSession.startTimeMs)),
+                            text = "${dateFormat.format(Date(currentSession.startTimeMs))} • ${TimeFormatUtils.formatTimeRange(currentSession.startTimeMs, currentSession.endTimeMs)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )
@@ -167,7 +167,7 @@ fun ChargeSessionDetailBottomSheet(
                 StatCard(
                     modifier = Modifier.weight(1f),
                     title = "DURATION",
-                    value = "${durationMin}m",
+                    value = TimeFormatUtils.formatDurationHuman(currentSession.durationMs),
                     color = AccentBlue
                 )
                 StatCard(
