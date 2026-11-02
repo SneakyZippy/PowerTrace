@@ -175,7 +175,9 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
                 startPolling()
             }
         } else {
-            clearPersistedActiveSession()
+            // Restore any ongoing persisted session into memory instead of clearing it,
+            // so an unplug event on a cold/restarted process can finalize it properly
+            restoreActiveSession()
             sampleCurrentState()
         }
     }
@@ -279,7 +281,7 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         if (paused != null && isDisconnectGraceEnabled()) {
             val disconnectDurationMs = nowMs - paused.disconnectTimeMs
             val graceMs = getDisconnectGraceSeconds() * 1000L
-            val wasMeaningfulSession = paused.samples.size >= 2 && (paused.disconnectTimeMs - paused.startTimeMs) >= 5_000L
+            val wasMeaningfulSession = (paused.sampleCount >= 2 || paused.samples.size >= 2) && (paused.disconnectTimeMs - paused.startTimeMs) >= 5_000L
 
             if (disconnectDurationMs <= graceMs && wasMeaningfulSession) {
                 // Dismiss pending save prompt since we reconnected within grace
@@ -315,6 +317,10 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         promptAutoResumeJob = null
         ChargingNotificationHelper.cancelReconnectNotification(context)
         _reconnectPrompt.value = null
+
+        if (sessionStartTimeMs <= 0L) {
+            restoreActiveSession()
+        }
 
         val nowMs = System.currentTimeMillis()
         val durationMs = if (sessionStartTimeMs > 0L) nowMs - sessionStartTimeMs else 0L
@@ -704,8 +710,10 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
                 plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS ||
                 (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && plugged == BatteryManager.BATTERY_PLUGGED_DOCK)
 
+        val bmCharging = batteryManager.isCharging
         val isCharging = isPlugged && (status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                status == BatteryManager.BATTERY_STATUS_FULL)
+                status == BatteryManager.BATTERY_STATUS_FULL ||
+                bmCharging)
 
         if (!lastKnownPlugged && isPlugged) {
             onPowerConnected()
@@ -753,7 +761,7 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
 
         val nowMs = System.currentTimeMillis()
 
-        if (isCharging) {
+        if (isPlugged) {
             if (sessionStartTimeMs == 0L) {
                 sessionStartTimeMs = nowMs
                 startBatteryLevel = level
@@ -761,42 +769,44 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
                 persistActiveSession()
             }
 
-            if (wattage > peakWattage) {
-                peakWattage = wattage
-                persistActiveSession()
-            }
-            if (chargingCurrentMa > peakCurrentMa) peakCurrentMa = chargingCurrentMa
-            if (voltageMv in 1 until minVoltageMv) minVoltageMv = voltageMv
-            if (voltageMv > maxVoltageMv) maxVoltageMv = voltageMv
-            if (tempDeciC > maxTempDeciC) maxTempDeciC = tempDeciC
+            if (isCharging) {
+                if (wattage > peakWattage) {
+                    peakWattage = wattage
+                    persistActiveSession()
+                }
+                if (chargingCurrentMa > peakCurrentMa) peakCurrentMa = chargingCurrentMa
+                if (voltageMv in 1 until minVoltageMv) minVoltageMv = voltageMv
+                if (voltageMv > maxVoltageMv) maxVoltageMv = voltageMv
+                if (tempDeciC > maxTempDeciC) maxTempDeciC = tempDeciC
 
-            wattageSum += wattage
-            sampleCount++
-            if (sampleCount % 15 == 0) {
-                persistActiveSession()
-            }
+                wattageSum += wattage
+                sampleCount++
+                if (sampleCount % 10 == 0) {
+                    persistActiveSession()
+                }
 
-            // Throttling logic: high temp and wattage dropped below 60% of peak while battery not full
-            if (tempDeciC >= 390 && level < 75 && peakWattage > 10f && wattage < (peakWattage * 0.6f)) {
-                isThrottled = true
-            }
+                // Throttling logic: high temp and wattage dropped below 60% of peak while battery not full
+                if (tempDeciC >= 390 && level < 75 && peakWattage > 10f && wattage < (peakWattage * 0.6f)) {
+                    isThrottled = true
+                }
 
-            // Keep in-memory samples
-            if (samplesList.size < 600) {
-                samplesList.add(
-                    ChargeTelemetrySample(
-                        sessionId = activeSessionId,
-                        timestampMs = nowMs,
-                        batteryLevel = level,
-                        voltageMv = voltageMv,
-                        currentMa = chargingCurrentMa,
-                        wattage = wattage,
-                        tempDeciC = tempDeciC
+                // Keep in-memory samples
+                if (samplesList.size < 600) {
+                    samplesList.add(
+                        ChargeTelemetrySample(
+                            sessionId = activeSessionId,
+                            timestampMs = nowMs,
+                            batteryLevel = level,
+                            voltageMv = voltageMv,
+                            currentMa = chargingCurrentMa,
+                            wattage = wattage,
+                            tempDeciC = tempDeciC
+                        )
                     )
-                )
+                }
             }
-        } else {
-            // Not charging: reset ongoing live metrics if not in active session
+        } else if (!_isGracePeriodActive.value && pausedSessionData == null) {
+            // Truly disconnected from power and not in grace period: reset live metrics
             sessionStartTimeMs = 0L
             peakWattage = 0f
             peakCurrentMa = 0
@@ -805,8 +815,8 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
             isThrottled = false
         }
 
-        val avgWattage = if (isCharging && sampleCount > 0) (wattageSum / sampleCount).toFloat() else wattage
-        val durationMs = if (isCharging && sessionStartTimeMs > 0L) (nowMs - sessionStartTimeMs) else 0L
+        val avgWattage = if (sampleCount > 0) (wattageSum / sampleCount).toFloat() else wattage
+        val durationMs = if (isPlugged && sessionStartTimeMs > 0L) (nowMs - sessionStartTimeMs) else 0L
 
         // Display current: when charging show +chargingCurrentMa, when unplugged show rawMa (e.g. -450 mA)
         val displayMa = if (isCharging) chargingCurrentMa else rawMa
@@ -826,10 +836,10 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
             voltageMv = voltageMv,
             batteryLevelPercent = level,
             tempDeciCelsius = tempDeciC,
-            peakWattageSoFar = if (isCharging) peakWattage else 0f,
-            avgWattageSoFar = if (isCharging) avgWattage else 0f,
+            peakWattageSoFar = if (isPlugged) peakWattage else 0f,
+            avgWattageSoFar = if (isPlugged) avgWattage else 0f,
             sessionDurationMs = durationMs,
-            isThrottlingDetected = if (isCharging) isThrottled else false,
+            isThrottlingDetected = if (isPlugged) isThrottled else false,
             isGracePeriodActive = _isGracePeriodActive.value,
             gracePeriodRemainingSeconds = remainingGraceSec
         )

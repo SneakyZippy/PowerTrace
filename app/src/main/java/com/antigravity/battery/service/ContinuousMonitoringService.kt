@@ -186,6 +186,7 @@ class ContinuousMonitoringService : Service() {
             val bmCharging = bm?.isCharging ?: false
             val isCharging = isPlugged && (status == BatteryManager.BATTERY_STATUS_CHARGING ||
                     status == BatteryManager.BATTERY_STATUS_FULL ||
+                    status == BatteryManager.BATTERY_STATUS_NOT_CHARGING ||
                     bmCharging)
 
             val entity = PeriodicSnapshotEntity(

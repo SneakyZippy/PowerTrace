@@ -16,7 +16,7 @@ object ChargingNotificationHelper {
 
     const val CHANNEL_ID = "charging_benchmarks"
     const val NOTIFICATION_ID = 2001
-    const val NOTIFICATION_ID_DISCONNECT_GRACE = 2002
+    const val NOTIFICATION_ID_DISCONNECT_GRACE = 2004
     const val NOTIFICATION_ID_RECONNECT = 2003
 
     const val ACTION_TAG_ACCESSORIES = "com.antigravity.battery.ACTION_TAG_ACCESSORIES"

@@ -4,6 +4,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.antigravity.battery.core.engine.ChargingBenchmarkManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class SessionTriggerReceiver : BroadcastReceiver() {
 
@@ -23,16 +26,30 @@ class SessionTriggerReceiver : BroadcastReceiver() {
             }
             Intent.ACTION_POWER_CONNECTED -> {
                 onTriggerEvent?.invoke("CHARGER_CONNECTED")
-                benchmarkManager.onPowerConnected()
-                if (ContinuousMonitoringService.isRunning) {
-                    ContinuousMonitoringService.triggerSnapshot(context)
+                val pendingResult = goAsync()
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        benchmarkManager.onPowerConnected()
+                        if (ContinuousMonitoringService.isRunning) {
+                            ContinuousMonitoringService.triggerSnapshot(context)
+                        }
+                    } finally {
+                        pendingResult.finish()
+                    }
                 }
             }
             Intent.ACTION_POWER_DISCONNECTED -> {
                 onTriggerEvent?.invoke("CHARGER_DISCONNECTED")
-                benchmarkManager.onPowerDisconnected()
-                if (ContinuousMonitoringService.isRunning) {
-                    ContinuousMonitoringService.triggerSnapshot(context)
+                val pendingResult = goAsync()
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        benchmarkManager.onPowerDisconnected()
+                        if (ContinuousMonitoringService.isRunning) {
+                            ContinuousMonitoringService.triggerSnapshot(context)
+                        }
+                    } finally {
+                        pendingResult.finish()
+                    }
                 }
             }
         }

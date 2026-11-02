@@ -1,8 +1,11 @@
 package com.antigravity.battery
 
 import com.antigravity.battery.core.model.ChargeTestSession
+import com.antigravity.battery.service.ChargingNotificationHelper
+import com.antigravity.battery.service.ContinuousMonitoringService
 import com.antigravity.battery.ui.util.TimeFormatUtils
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Calendar
@@ -98,5 +101,52 @@ class ChargingBenchmarkPersistenceTest {
         assertEquals(45.0f, combinations[0].second, 0.01f)
         assertEquals("Cable B (60W)", combinations[1].first)
         assertEquals(27.5f, combinations[1].second, 0.01f)
+    }
+
+    @Test
+    fun testNotificationIdCollisionPrevention() {
+        // ContinuousMonitoringService uses 2002 as ongoing foreground service notification
+        val continuousNotificationId = ContinuousMonitoringService.NOTIFICATION_ID
+        val graceNotificationId = ChargingNotificationHelper.NOTIFICATION_ID_DISCONNECT_GRACE
+        val finishedNotificationId = ChargingNotificationHelper.NOTIFICATION_ID
+
+        assertNotEquals(
+            "Disconnect grace notification ID must not collide with ContinuousMonitoringService",
+            continuousNotificationId,
+            graceNotificationId
+        )
+        assertNotEquals(
+            "Session finished notification ID must not collide with ContinuousMonitoringService",
+            continuousNotificationId,
+            finishedNotificationId
+        )
+    }
+
+    @Test
+    fun testMultiHourSessionMetricsNotTruncated() {
+        val startMs = 1700000000000L
+        val disconnectMs = startMs + (7 * 3600 * 1000L) // unplugged 7 hours later
+
+        val session = ChargeTestSession(
+            id = "multi-hour-night",
+            brickName = "65W GaN",
+            cableName = "100W USB-C",
+            startTimeMs = startMs,
+            endTimeMs = disconnectMs,
+            startBatteryLevel = 22,
+            endBatteryLevel = 100,
+            peakWattage = 38.5f,
+            avgWattage = 24.1f,
+            minVoltageMv = 3850,
+            maxVoltageMv = 4400,
+            peakCurrentMa = 8500,
+            startTempDeciC = 260,
+            maxTempDeciC = 360,
+            isThrottled = false
+        )
+
+        assertEquals(7 * 3600 * 1000L, session.durationMs)
+        assertEquals(78, session.batteryGained)
+        assertTrue("Session duration must exceed 6 hours", session.durationMs > 6 * 3600 * 1000L)
     }
 }
