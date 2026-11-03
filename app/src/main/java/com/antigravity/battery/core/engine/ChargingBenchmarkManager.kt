@@ -32,7 +32,6 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
 
     private val scope = CoroutineScope(Dispatchers.Default)
     private var samplingJob: Job? = null
-    private var simulationJob: Job? = null
 
     private val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -872,28 +871,7 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         )
     }
 
-    /**
-     * Simulates a fast-charging cycle for 5 seconds to test and demo the HUD & saving flow.
-     */
-    fun simulateMockChargeSession(onComplete: () -> Unit = {}) {
-        simulationJob?.cancel()
-        simulationJob = MockChargeSimulator.simulate(
-            scope = scope,
-            context = context,
-            activeBrickId = activeBrickId,
-            activeCableId = activeCableId,
-            activeBrickName = activeBrickName,
-            activeCableName = activeCableName,
-            onTelemetryUpdated = { _liveTelemetry.value = it },
-            onSessionCompleted = { simSession, simSamples ->
-                _pendingCompletedSession.value = Pair(simSession, simSamples)
-            },
-            onComplete = {
-                sampleCurrentState()
-                onComplete()
-            }
-        )
-    }
+
 
     private fun getBatteryIntent(): Intent? {
         val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)

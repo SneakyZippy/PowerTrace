@@ -1,12 +1,7 @@
 package com.antigravity.battery.ui.components
 
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,32 +14,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.antigravity.battery.core.engine.TimelinePoint
-import com.antigravity.battery.ui.theme.AccentBlue
-import com.antigravity.battery.ui.theme.DarkBackground
+import com.antigravity.battery.ui.components.timeline.TimelineChartCanvas
+import com.antigravity.battery.ui.components.timeline.TimelineHeaderOverlay
+import com.antigravity.battery.ui.components.timeline.rememberTimelineZoomState
 import com.antigravity.battery.ui.theme.DarkSurface
-import com.antigravity.battery.ui.theme.DarkSurfaceVariant
-import com.antigravity.battery.ui.theme.GreenPrimary
-import com.antigravity.battery.ui.theme.TextPrimary
 import com.antigravity.battery.ui.theme.TextSecondary
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 @Composable
@@ -53,33 +35,19 @@ fun BatteryTimelineChart(
     modifier: Modifier = Modifier
 ) {
     if (points.isEmpty()) {
-        Card(
-            modifier = modifier
-                .fillMaxWidth()
-                .height(180.dp),
-            colors = CardDefaults.cardColors(containerColor = DarkSurface),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = "No timeline points yet. Background recording active.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
-                )
-            }
-        }
+        EmptyTimelineCard(modifier = modifier)
         return
     }
 
-    var selectedPointIndex by remember { mutableStateOf<Int?>(null) }
-    val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val zoomState = rememberTimelineZoomState()
+    var canvasWidthPx by remember { mutableFloatStateOf(0f) }
 
     // Downsample points if there are too many to guarantee butter-smooth 60fps rendering
     val displayPoints = remember(points) {
-        if (points.size <= 120) {
+        if (points.size <= 150) {
             points
         } else {
-            val step = (points.size / 100).coerceAtLeast(1)
+            val step = (points.size / 120).coerceAtLeast(1)
             val decimated = mutableListOf<TimelinePoint>()
             decimated.add(points.first())
             for (i in 1 until points.size - 1 step step) {
@@ -95,157 +63,84 @@ fun BatteryTimelineChart(
     val startMs = points.first().timestampMs
     val endMs = points.last().timestampMs
     val timeSpanMs = (endMs - startMs).coerceAtLeast(1L)
+    val isMultiDay = timeSpanMs > 24 * 3600 * 1000L
+
+    val isScrubbed = zoomState.selectedPointIndex != null
+    val activePoint = zoomState.selectedPointIndex?.let { points.getOrNull(it) } ?: points.last()
+
+    // Calculate drain/charge rate around the active point if neighbor points exist
+    val rateText = remember(activePoint, points) {
+        calculateLocalRateText(activePoint, points)
+    }
 
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .height(210.dp),
+            .height(230.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(14.dp)
+        ) {
+            TimelineHeaderOverlay(
+                activePoint = activePoint,
+                isScrubbed = isScrubbed,
+                zoomState = zoomState,
+                canvasWidth = canvasWidthPx,
+                isMultiDay = isMultiDay,
+                rateText = rateText,
+                onClearSelection = { zoomState.clearSelection() }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            TimelineChartCanvas(
+                points = displayPoints,
+                zoomState = zoomState,
+                startMs = startMs,
+                timeSpanMs = timeSpanMs,
+                isMultiDay = isMultiDay,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onSizeChanged { canvasWidthPx = it.width.toFloat() }
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmptyTimelineCard(modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(180.dp),
         colors = CardDefaults.cardColors(containerColor = DarkSurface),
         shape = RoundedCornerShape(14.dp)
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            // Header with scrub info or current status
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val activePoint = selectedPointIndex?.let { points.getOrNull(it) } ?: points.last()
-                val statusText = if (activePoint.isCharging) "⚡ Charging" else "Discharging"
-                val statusColor = if (activePoint.isCharging) AccentBlue else GreenPrimary
-
-                Text(
-                    text = "${activePoint.batteryPercent}%",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = statusColor
-                )
-                Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                Text(
-                    text = "• ${timeFormat.format(Date(activePoint.timestampMs))} ($statusText)",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
-                )
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Chart Canvas
-            Canvas(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(points) {
-                        detectTapGestures(
-                            onPress = { offset ->
-                                val fraction = (offset.x / size.width).coerceIn(0f, 1f)
-                                val targetTime = startMs + (fraction * timeSpanMs).toLong()
-                                val closestIndex = points.indices.minByOrNull {
-                                    kotlin.math.abs(points[it].timestampMs - targetTime)
-                                }
-                                selectedPointIndex = closestIndex
-                            }
-                        )
-                    }
-            ) {
-                val w = size.width
-                val h = size.height
-                val bottomPadding = 20f
-                val chartHeight = h - bottomPadding
-
-                // Draw horizontal guide lines (0%, 25%, 50%, 75%, 100%)
-                for (level in listOf(0, 25, 50, 75, 100)) {
-                    val y = chartHeight - (level / 100f * chartHeight)
-                    drawLine(
-                        color = Color.White.copy(alpha = 0.06f),
-                        start = Offset(0f, y),
-                        end = Offset(w, y),
-                        strokeWidth = 1f
-                    )
-                }
-
-                // Draw charging background highlights
-                for (i in 0 until displayPoints.size - 1) {
-                    val p1 = displayPoints[i]
-                    val p2 = displayPoints[i + 1]
-                    if (p1.isCharging || p2.isCharging) {
-                        val x1 = ((p1.timestampMs - startMs).toFloat() / timeSpanMs) * w
-                        val x2 = ((p2.timestampMs - startMs).toFloat() / timeSpanMs) * w
-                        drawRect(
-                            color = AccentBlue.copy(alpha = 0.15f),
-                            topLeft = Offset(x1, 0f),
-                            size = androidx.compose.ui.geometry.Size((x2 - x1).coerceAtLeast(2f), chartHeight)
-                        )
-                    }
-                }
-
-                // Build battery curve path
-                val linePath = Path()
-                val fillPath = Path()
-
-                displayPoints.forEachIndexed { index, p ->
-                    val x = if (timeSpanMs > 0) ((p.timestampMs - startMs).toFloat() / timeSpanMs) * w else 0f
-                    val y = chartHeight - (p.batteryPercent / 100f * chartHeight)
-
-                    if (index == 0) {
-                        linePath.moveTo(x, y)
-                        fillPath.moveTo(x, chartHeight)
-                        fillPath.lineTo(x, y)
-                    } else {
-                        linePath.lineTo(x, y)
-                        fillPath.lineTo(x, y)
-                    }
-
-                    if (index == displayPoints.size - 1) {
-                        fillPath.lineTo(x, chartHeight)
-                        fillPath.close()
-                    }
-                }
-
-                // Draw area gradient fill
-                drawPath(
-                    path = fillPath,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            GreenPrimary.copy(alpha = 0.28f),
-                            GreenPrimary.copy(alpha = 0.02f)
-                        ),
-                        startY = 0f,
-                        endY = chartHeight
-                    )
-                )
-
-                // Draw primary battery curve line
-                drawPath(
-                    path = linePath,
-                    color = GreenPrimary,
-                    style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-                )
-
-                // Draw scrub indicator cursor if active
-                selectedPointIndex?.let { idx ->
-                    val selPoint = points.getOrNull(idx)
-                    if (selPoint != null) {
-                        val selX = ((selPoint.timestampMs - startMs).toFloat() / timeSpanMs) * w
-                        val selY = chartHeight - (selPoint.batteryPercent / 100f * chartHeight)
-
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.5f),
-                            start = Offset(selX, 0f),
-                            end = Offset(selX, chartHeight),
-                            strokeWidth = 1.5.dp.toPx()
-                        )
-                        drawCircle(
-                            color = Color.White,
-                            radius = 5.dp.toPx(),
-                            center = Offset(selX, selY)
-                        )
-                        drawCircle(
-                            color = GreenPrimary,
-                            radius = 3.dp.toPx(),
-                            center = Offset(selX, selY)
-                        )
-                    }
-                }
-            }
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                text = "No timeline points yet. Background recording active.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary
+            )
         }
     }
+}
+
+private fun calculateLocalRateText(activePoint: TimelinePoint, points: List<TimelinePoint>): String? {
+    val idx = points.indexOf(activePoint)
+    if (idx <= 0 && points.size < 2) return null
+
+    val prev = if (idx > 0) points[idx - 1] else points.first()
+    val deltaBattery = activePoint.batteryPercent - prev.batteryPercent
+    val deltaMs = activePoint.timestampMs - prev.timestampMs
+
+    if (deltaMs < 30_000L) return null
+    val hours = deltaMs / 3_600_000.0
+    val ratePerHour = deltaBattery / hours
+
+    return String.format(Locale.US, "%+.1f%%/h", ratePerHour)
 }

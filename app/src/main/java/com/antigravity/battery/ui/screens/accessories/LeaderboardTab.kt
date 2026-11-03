@@ -219,7 +219,7 @@ fun LeaderboardTab(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = if (sessions.isEmpty()) "No charging tests saved yet.\nConnect a charger to test or click 'Simulate Fast-Charge Test'."
+                        text = if (sessions.isEmpty()) "No charging tests saved yet.\nConnect a charger to test and record your accessories."
                         else "No test results matching '$selectedFilter'.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary,

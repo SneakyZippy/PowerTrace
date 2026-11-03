@@ -657,10 +657,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         chargingBenchmarkManager.setPendingSession(session, samples)
     }
 
-    fun simulateChargingTest(onComplete: () -> Unit = {}) {
-        chargingBenchmarkManager.simulateMockChargeSession(onComplete)
-    }
-
     fun toggleAutoPromptEnabled(enabled: Boolean) {
         chargingBenchmarkManager.setAutoPromptEnabled(enabled)
         _isAutoPromptEnabled.value = enabled

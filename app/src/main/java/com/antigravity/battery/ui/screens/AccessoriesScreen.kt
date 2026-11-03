@@ -54,7 +54,6 @@ fun AccessoriesScreen(
     onDeleteSession: (ChargeTestSession) -> Unit,
     onUpdateSession: (ChargeTestSession) -> Unit = {},
     onManualTagSession: (ChargeTestSession) -> Unit,
-    onSimulateTest: (onComplete: () -> Unit) -> Unit,
     onStartPolling: () -> Unit = {},
     onStopPolling: () -> Unit = {},
     onFinalizeGraceNow: () -> Unit = {},
@@ -74,7 +73,6 @@ fun AccessoriesScreen(
     var showAddCableDialog by remember { mutableStateOf(false) }
     var editingBrick by remember { mutableStateOf<PowerBrick?>(null) }
     var editingCable by remember { mutableStateOf<Cable?>(null) }
-    var isSimulating by remember { mutableStateOf(false) }
 
     var selectedHudBrickId by remember { mutableStateOf<String?>(null) }
     var selectedHudCableId by remember { mutableStateOf<String?>(null) }
@@ -128,7 +126,6 @@ fun AccessoriesScreen(
             when (selectedTabIndex) {
                 0 -> LiveChargeHudTab(
                     telemetry = liveTelemetry,
-                    isSimulating = isSimulating,
                     powerBricks = powerBricks,
                     cables = cables,
                     selectedBrickId = selectedHudBrickId,
@@ -138,12 +135,6 @@ fun AccessoriesScreen(
                     onAddNewBrick = { showAddBrickDialog = true },
                     onAddNewCable = { showAddCableDialog = true },
                     onFinalizeGraceNow = onFinalizeGraceNow,
-                    onSimulate = {
-                        isSimulating = true
-                        onSimulateTest {
-                            isSimulating = false
-                        }
-                    },
                     onSaveCurrent = {
                         val chosenBrick = powerBricks.find { it.id == selectedHudBrickId }
                         val chosenCable = cables.find { it.id == selectedHudCableId }

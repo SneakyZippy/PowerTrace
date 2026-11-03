@@ -24,7 +24,6 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Power
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
@@ -65,7 +64,6 @@ import java.util.Locale
 @Composable
 fun LiveChargeHudTab(
     telemetry: LiveChargeTelemetry,
-    isSimulating: Boolean,
     powerBricks: List<PowerBrick>,
     cables: List<Cable>,
     selectedBrickId: String?,
@@ -74,7 +72,6 @@ fun LiveChargeHudTab(
     onSelectCable: (String) -> Unit,
     onAddNewBrick: () -> Unit,
     onAddNewCable: () -> Unit,
-    onSimulate: () -> Unit,
     onSaveCurrent: () -> Unit,
     onFinalizeGraceNow: () -> Unit = {}
 ) {
@@ -445,34 +442,18 @@ fun LiveChargeHudTab(
             }
         }
 
-        // Action Buttons
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                // Finish & Tag Button: ONLY when phone is actively charging!
-                if (telemetry.isCharging) {
-                    Button(
-                        onClick = onSaveCurrent,
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.Stop, contentDescription = null, tint = DarkBackground)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Finish & Tag This Test", color = DarkBackground, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                    }
-                }
-
-                // Demo Simulation Button
-                OutlinedButton(
-                    onClick = onSimulate,
-                    enabled = !isSimulating,
+        // Action Buttons: ONLY when phone is actively charging!
+        if (telemetry.isCharging) {
+            item {
+                Button(
+                    onClick = onSaveCurrent,
                     modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentBlue)
+                    colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                    Icon(Icons.Default.Stop, contentDescription = null, tint = DarkBackground)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (isSimulating) "Simulating Fast Charge..." else "Simulate Fast-Charge Test (Demo)")
+                    Text("Finish & Tag This Test", color = DarkBackground, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                 }
             }
         }

@@ -2,7 +2,8 @@ package com.antigravity.battery.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -141,14 +142,23 @@ fun ChargeCurveChart(
                     modifier = Modifier
                         .fillMaxSize()
                         .pointerInput(displaySamples) {
-                            detectTapGestures(
-                                onPress = { offset ->
-                                    val index = ((offset.x / size.width) * (displaySamples.size - 1))
-                                        .toInt()
-                                        .coerceIn(0, displaySamples.lastIndex)
-                                    selectedSampleIndex = index
-                                }
-                            )
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                selectedSampleIndex = ((down.position.x / size.width) * (displaySamples.size - 1))
+                                    .toInt()
+                                    .coerceIn(0, displaySamples.lastIndex)
+
+                                do {
+                                    val event = awaitPointerEvent()
+                                    val ptr = event.changes.firstOrNull { it.pressed }
+                                    if (ptr != null) {
+                                        selectedSampleIndex = ((ptr.position.x / size.width) * (displaySamples.size - 1))
+                                            .toInt()
+                                            .coerceIn(0, displaySamples.lastIndex)
+                                        ptr.consume()
+                                    }
+                                } while (event.changes.any { it.pressed })
+                            }
                         }
                 ) {
                     val w = size.width
