@@ -139,6 +139,15 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         const val DEFAULT_MIN_BATTERY_GAIN = 0
         const val DEFAULT_DISCONNECT_GRACE_SECONDS = 60
 
+        fun qualifiesForPrompt(
+            durationMs: Long,
+            batteryGained: Int,
+            minDurationMs: Long,
+            minBatteryGain: Int
+        ): Boolean {
+            return durationMs >= minDurationMs && batteryGained >= minBatteryGain
+        }
+
         @Volatile
         private var INSTANCE: ChargingBenchmarkManager? = null
 
@@ -256,6 +265,17 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
 
     fun getMinBatteryGain(): Int = prefs.getInt(PREF_KEY_MIN_BATTERY_GAIN, DEFAULT_MIN_BATTERY_GAIN)
     fun setMinBatteryGain(gain: Int) = prefs.edit().putInt(PREF_KEY_MIN_BATTERY_GAIN, gain).apply()
+
+    fun shouldPromptForSession(session: ChargeTestSession): Boolean {
+        return shouldPromptForSession(session.durationMs, session.batteryGained)
+    }
+
+    fun shouldPromptForSession(durationMs: Long, batteryGained: Int): Boolean {
+        if (!isAutoPromptEnabled()) return false
+        val minDurationMs = getMinDurationMinutes() * 60 * 1000L
+        val minGain = getMinBatteryGain()
+        return qualifiesForPrompt(durationMs, batteryGained, minDurationMs, minGain)
+    }
 
     fun isDisconnectGraceEnabled(): Boolean = prefs.getBoolean(PREF_KEY_DISCONNECT_GRACE_ENABLED, true)
     fun setDisconnectGraceEnabled(enabled: Boolean) = prefs.edit().putBoolean(PREF_KEY_DISCONNECT_GRACE_ENABLED, enabled).apply()
@@ -398,7 +418,7 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         }
         clearPersistedActiveSession()
 
-        val autoPrompt = isAutoPromptEnabled()
+        val autoPrompt = shouldPromptForSession(session)
 
         // Show completed session prompt immediately without making the user wait for grace countdown
         if (autoPrompt) {
@@ -473,7 +493,7 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
 
         val samples = paused?.samples ?: _pendingCompletedSession.value?.second ?: emptyList()
 
-        val autoPrompt = isAutoPromptEnabled()
+        val autoPrompt = shouldPromptForSession(session)
 
         if (forcePrompt || autoPrompt) {
             _pendingCompletedSession.value = Pair(session, samples)
@@ -583,6 +603,10 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
 
         val batteryStatus = getBatteryIntent()
         startBatteryLevel = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        if (startBatteryLevel < 0) {
+            val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+            startBatteryLevel = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+        }
         startTempDeciC = batteryStatus?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
 
         persistActiveSession()
@@ -625,7 +649,7 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         clearPersistedActiveSession()
 
         // Check if session qualifies for prompt
-        val autoPrompt = isAutoPromptEnabled()
+        val autoPrompt = shouldPromptForSession(session)
 
         if (autoPrompt) {
             _pendingCompletedSession.value = Pair(session, samplesList.toList())
@@ -766,6 +790,9 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
                 sessionStartTimeMs = nowMs
                 startBatteryLevel = level
                 startTempDeciC = tempDeciC
+                persistActiveSession()
+            } else if (startBatteryLevel < 0 && level >= 0) {
+                startBatteryLevel = level
                 persistActiveSession()
             }
 

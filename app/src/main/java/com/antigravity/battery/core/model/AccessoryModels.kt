@@ -53,7 +53,7 @@ data class ChargeTestSession(
     val notes: String = ""
 ) {
     val durationMs: Long get() = (endTimeMs - startTimeMs).coerceAtLeast(0L)
-    val batteryGained: Int get() = (endBatteryLevel - startBatteryLevel).coerceAtLeast(0)
+    val batteryGained: Int get() = if (startBatteryLevel < 0) 0 else (endBatteryLevel - startBatteryLevel).coerceAtLeast(0)
     val startTempCelsius: Float get() = startTempDeciC / 10.0f
     val maxTempCelsius: Float get() = maxTempDeciC / 10.0f
 }

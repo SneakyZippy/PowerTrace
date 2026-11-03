@@ -1,5 +1,6 @@
 package com.antigravity.battery
 
+import com.antigravity.battery.core.engine.ChargingBenchmarkManager
 import com.antigravity.battery.core.model.Cable
 import com.antigravity.battery.core.model.ChargeTelemetrySample
 import com.antigravity.battery.core.model.ChargeTestSession
@@ -102,7 +103,9 @@ class ChargingBenchmarkTest {
             startTempDeciC = 300,
             maxTempDeciC = 310
         )
-        val shortQualifies = shortSession.durationMs >= minDurationMs && shortSession.batteryGained >= minGain
+        val shortQualifies = ChargingBenchmarkManager.qualifiesForPrompt(
+            shortSession.durationMs, shortSession.batteryGained, minDurationMs, minGain
+        )
         assertFalse(shortQualifies)
 
         // Case 2: Long session (10 mins), but 0% gain (e.g. idle high drain) -> should not prompt
@@ -119,7 +122,9 @@ class ChargingBenchmarkTest {
             startTempDeciC = 300,
             maxTempDeciC = 310
         )
-        val flatQualifies = flatSession.durationMs >= minDurationMs && flatSession.batteryGained >= minGain
+        val flatQualifies = ChargingBenchmarkManager.qualifiesForPrompt(
+            flatSession.durationMs, flatSession.batteryGained, minDurationMs, minGain
+        )
         assertFalse(flatQualifies)
 
         // Case 3: 8 minutes session, gained 9% -> should qualify for prompt
@@ -136,8 +141,97 @@ class ChargingBenchmarkTest {
             startTempDeciC = 290,
             maxTempDeciC = 340
         )
-        val validQualifies = validSession.durationMs >= minDurationMs && validSession.batteryGained >= minGain
+        val validQualifies = ChargingBenchmarkManager.qualifiesForPrompt(
+            validSession.durationMs, validSession.batteryGained, minDurationMs, minGain
+        )
         assertTrue(validQualifies)
+    }
+
+    @Test
+    fun testCustomThresholdEvaluationWith10Min10Percent() {
+        val minDurationMs = 10 * 60 * 1000L
+        val minGain = 10
+
+        // 3 mins, gained 12% -> duration insufficient -> should not qualify
+        val shortHighGain = ChargeTestSession(
+            startTimeMs = 1000000L,
+            endTimeMs = 1000000L + (3 * 60 * 1000L),
+            startBatteryLevel = 40,
+            endBatteryLevel = 52,
+            peakWattage = 45f,
+            avgWattage = 35f,
+            minVoltageMv = 4000,
+            maxVoltageMv = 4300,
+            peakCurrentMa = 8000,
+            startTempDeciC = 300,
+            maxTempDeciC = 350
+        )
+        assertFalse(
+            ChargingBenchmarkManager.qualifiesForPrompt(
+                shortHighGain.durationMs, shortHighGain.batteryGained, minDurationMs, minGain
+            )
+        )
+
+        // 15 mins, gained 5% -> gain insufficient -> should not qualify
+        val longLowGain = ChargeTestSession(
+            startTimeMs = 1000000L,
+            endTimeMs = 1000000L + (15 * 60 * 1000L),
+            startBatteryLevel = 80,
+            endBatteryLevel = 85,
+            peakWattage = 10f,
+            avgWattage = 7f,
+            minVoltageMv = 4200,
+            maxVoltageMv = 4350,
+            peakCurrentMa = 1500,
+            startTempDeciC = 300,
+            maxTempDeciC = 330
+        )
+        assertFalse(
+            ChargingBenchmarkManager.qualifiesForPrompt(
+                longLowGain.durationMs, longLowGain.batteryGained, minDurationMs, minGain
+            )
+        )
+
+        // 12 mins, gained 14% -> both thresholds satisfied -> qualifies
+        val qualifiedSession = ChargeTestSession(
+            startTimeMs = 1000000L,
+            endTimeMs = 1000000L + (12 * 60 * 1000L),
+            startBatteryLevel = 30,
+            endBatteryLevel = 44,
+            peakWattage = 33f,
+            avgWattage = 25f,
+            minVoltageMv = 4000,
+            maxVoltageMv = 4300,
+            peakCurrentMa = 6000,
+            startTempDeciC = 300,
+            maxTempDeciC = 340
+        )
+        assertTrue(
+            ChargingBenchmarkManager.qualifiesForPrompt(
+                qualifiedSession.durationMs, qualifiedSession.batteryGained, minDurationMs, minGain
+            )
+        )
+
+        // Negative startBatteryLevel edge case (-1) -> batteryGained is 0 -> should not qualify
+        val uninitializedLevelSession = ChargeTestSession(
+            startTimeMs = 1000000L,
+            endTimeMs = 1000000L + (15 * 60 * 1000L),
+            startBatteryLevel = -1,
+            endBatteryLevel = 50,
+            peakWattage = 20f,
+            avgWattage = 15f,
+            minVoltageMv = 4000,
+            maxVoltageMv = 4200,
+            peakCurrentMa = 4000,
+            startTempDeciC = 300,
+            maxTempDeciC = 320
+        )
+        assertEquals(0, uninitializedLevelSession.batteryGained)
+        assertFalse(
+            ChargingBenchmarkManager.qualifiesForPrompt(
+                uninitializedLevelSession.durationMs, uninitializedLevelSession.batteryGained, minDurationMs, minGain
+            )
+        )
     }
 
     @Test
