@@ -10,3 +10,9 @@ captures/
 .cxx
 *.apk
 *.aab
+
+# AI Agent Instructions (Local only, never commit to public repo)
+AGENTS.md
+GEMINI.md
+.agents/
+.agent/
