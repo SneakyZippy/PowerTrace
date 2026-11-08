@@ -364,7 +364,22 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
         }
 
         val batteryStatus = getBatteryIntent()
-        val endBatteryLevel = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, startBatteryLevel) ?: startBatteryLevel
+        val rawEndLevel = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+        val bmCapacity = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+        val resolvedEndLevel = when {
+            rawEndLevel >= 0 -> rawEndLevel
+            bmCapacity >= 0 -> bmCapacity
+            samplesList.isNotEmpty() -> samplesList.last().batteryLevel
+            startBatteryLevel >= 0 -> startBatteryLevel
+            else -> 0
+        }
+        val resolvedStartLevel = if (startBatteryLevel >= 0) {
+            startBatteryLevel
+        } else {
+            samplesList.firstOrNull()?.batteryLevel ?: resolvedEndLevel
+        }
+        startBatteryLevel = resolvedStartLevel
 
         val paused = PausedSessionData(
             sessionId = activeSessionId,
@@ -374,8 +389,8 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
             cableName = activeCableName,
             startTimeMs = sessionStartTimeMs,
             disconnectTimeMs = nowMs,
-            startBatteryLevel = startBatteryLevel,
-            endBatteryLevel = endBatteryLevel,
+            startBatteryLevel = resolvedStartLevel,
+            endBatteryLevel = resolvedEndLevel,
             startTempDeciC = startTempDeciC,
             maxTempDeciC = maxTempDeciC,
             peakWattage = peakWattage,
@@ -618,7 +633,22 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
 
         val endTimeMs = System.currentTimeMillis()
         val batteryStatus = getBatteryIntent()
-        val endBatteryLevel = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, startBatteryLevel) ?: startBatteryLevel
+        val rawEndLevel = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+        val bmCapacity = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+        val resolvedEndLevel = when {
+            rawEndLevel >= 0 -> rawEndLevel
+            bmCapacity >= 0 -> bmCapacity
+            samplesList.isNotEmpty() -> samplesList.last().batteryLevel
+            startBatteryLevel >= 0 -> startBatteryLevel
+            else -> 0
+        }
+        val resolvedStartLevel = if (startBatteryLevel >= 0) {
+            startBatteryLevel
+        } else {
+            samplesList.firstOrNull()?.batteryLevel ?: resolvedEndLevel
+        }
+        startBatteryLevel = resolvedStartLevel
         val avgWattage = if (sampleCount > 0) (wattageSum / sampleCount).toFloat() else peakWattage
 
         val session = ChargeTestSession(
@@ -629,8 +659,8 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
             cableName = activeCableName,
             startTimeMs = sessionStartTimeMs,
             endTimeMs = endTimeMs,
-            startBatteryLevel = startBatteryLevel,
-            endBatteryLevel = endBatteryLevel,
+            startBatteryLevel = resolvedStartLevel,
+            endBatteryLevel = resolvedEndLevel,
             peakWattage = peakWattage,
             avgWattage = avgWattage,
             minVoltageMv = if (minVoltageMv == Int.MAX_VALUE) 0 else minVoltageMv,
@@ -754,7 +784,11 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
             else -> if (isCharging) "Charging" else "Unplugged"
         }
 
-        val level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, 0)
+        val rawLevel = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val level = if (rawLevel >= 0) rawLevel else {
+            val cap = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            if (cap >= 0) cap else 0
+        }.coerceIn(0, 100)
         val voltageMv = batteryStatus.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0)
         val tempDeciC = batteryStatus.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)
 
@@ -795,16 +829,16 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
                 persistActiveSession()
             }
 
-            if (isCharging) {
-                if (wattage > peakWattage) {
-                    peakWattage = wattage
-                    persistActiveSession()
-                }
-                if (chargingCurrentMa > peakCurrentMa) peakCurrentMa = chargingCurrentMa
-                if (voltageMv in 1 until minVoltageMv) minVoltageMv = voltageMv
-                if (voltageMv > maxVoltageMv) maxVoltageMv = voltageMv
-                if (tempDeciC > maxTempDeciC) maxTempDeciC = tempDeciC
+            if (wattage > peakWattage) {
+                peakWattage = wattage
+                persistActiveSession()
+            }
+            if (chargingCurrentMa > peakCurrentMa) peakCurrentMa = chargingCurrentMa
+            if (voltageMv in 1 until minVoltageMv) minVoltageMv = voltageMv
+            if (voltageMv > maxVoltageMv) maxVoltageMv = voltageMv
+            if (tempDeciC > maxTempDeciC) maxTempDeciC = tempDeciC
 
+            if (isCharging) {
                 wattageSum += wattage
                 sampleCount++
                 if (sampleCount % 10 == 0) {
@@ -815,22 +849,29 @@ class ChargingBenchmarkManager private constructor(private val context: Context)
                 if (tempDeciC >= 390 && level < 75 && peakWattage > 10f && wattage < (peakWattage * 0.6f)) {
                     isThrottled = true
                 }
-
-                // Keep in-memory samples
-                if (samplesList.size < 600) {
-                    samplesList.add(
-                        ChargeTelemetrySample(
-                            sessionId = activeSessionId,
-                            timestampMs = nowMs,
-                            batteryLevel = level,
-                            voltageMv = voltageMv,
-                            currentMa = chargingCurrentMa,
-                            wattage = wattage,
-                            tempDeciC = tempDeciC
-                        )
-                    )
-                }
             }
+
+            // Maintain full telemetry history across the entire session duration
+            if (samplesList.size >= 1200) {
+                val decimated = mutableListOf<ChargeTelemetrySample>()
+                for (idx in samplesList.indices step 2) {
+                    decimated.add(samplesList[idx])
+                }
+                samplesList.clear()
+                samplesList.addAll(decimated)
+            }
+
+            samplesList.add(
+                ChargeTelemetrySample(
+                    sessionId = activeSessionId,
+                    timestampMs = nowMs,
+                    batteryLevel = level,
+                    voltageMv = voltageMv,
+                    currentMa = chargingCurrentMa,
+                    wattage = wattage,
+                    tempDeciC = tempDeciC
+                )
+            )
         } else if (!_isGracePeriodActive.value && pausedSessionData == null) {
             // Truly disconnected from power and not in grace period: reset live metrics
             sessionStartTimeMs = 0L

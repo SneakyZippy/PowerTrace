@@ -20,6 +20,7 @@ class BootReceiver : BroadcastReceiver() {
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED -> {
                 Log.d(TAG, "Received ${intent.action}")
+                ChargingJobService.schedule(context)
                 if (ContinuousMonitoringService.isServiceActive(context)) {
                     Log.i(TAG, "Resuming 24/7 continuous telemetry after reboot...")
                     ContinuousMonitoringService.start(context)

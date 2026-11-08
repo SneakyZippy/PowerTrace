@@ -20,6 +20,7 @@ class SessionTriggerReceiver : BroadcastReceiver() {
         when (intent.action) {
             Intent.ACTION_USER_PRESENT -> {
                 onTriggerEvent?.invoke("SCREEN_UNLOCKED")
+                benchmarkManager.sampleCurrentState()
                 if (ContinuousMonitoringService.isRunning) {
                     ContinuousMonitoringService.triggerSnapshot(context)
                 }

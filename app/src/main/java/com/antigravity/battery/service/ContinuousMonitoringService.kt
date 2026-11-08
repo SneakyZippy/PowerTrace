@@ -14,9 +14,11 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.antigravity.battery.MainActivity
 import com.antigravity.battery.R
 import com.antigravity.battery.core.dump.BinderDumpSource
+import com.antigravity.battery.core.engine.ChargingBenchmarkManager
 import com.antigravity.battery.core.engine.SnapshotManager
 import com.antigravity.battery.core.model.SnapshotSerializer
 import com.antigravity.battery.data.db.BatteryDatabase
@@ -105,10 +107,20 @@ class ContinuousMonitoringService : Service() {
     private val stateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                Intent.ACTION_SCREEN_ON,
-                Intent.ACTION_SCREEN_OFF,
-                Intent.ACTION_POWER_CONNECTED,
+                Intent.ACTION_POWER_CONNECTED -> {
+                    ChargingBenchmarkManager.getInstance(this@ContinuousMonitoringService).onPowerConnected()
+                    serviceScope.launch {
+                        captureAndPersistSnapshot()
+                    }
+                }
                 Intent.ACTION_POWER_DISCONNECTED -> {
+                    ChargingBenchmarkManager.getInstance(this@ContinuousMonitoringService).onPowerDisconnected()
+                    serviceScope.launch {
+                        captureAndPersistSnapshot()
+                    }
+                }
+                Intent.ACTION_SCREEN_ON,
+                Intent.ACTION_SCREEN_OFF -> {
                     serviceScope.launch {
                         captureAndPersistSnapshot()
                     }
@@ -242,7 +254,8 @@ class ContinuousMonitoringService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification_bolt)
+            .setColor(ContextCompat.getColor(this, R.color.green_primary))
             .setOngoing(true)
             .setContentIntent(pendingOpen)
             .setPriority(priority)

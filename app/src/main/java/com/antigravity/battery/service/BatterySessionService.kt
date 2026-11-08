@@ -10,6 +10,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.antigravity.battery.MainActivity
 import com.antigravity.battery.R
 import kotlinx.coroutines.CoroutineScope
@@ -127,7 +128,8 @@ class BatterySessionService : Service {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Observation Session Active ($timeFormatted)")
             .setContentText("Baseline Battery: $startBattery% • Capturing wake locks & alarms")
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification_bolt)
+            .setColor(ContextCompat.getColor(this, R.color.green_primary))
             .setOngoing(true)
             .setContentIntent(pendingOpen)
             .addAction(android.R.drawable.ic_media_pause, "Stop & Analyze", pendingStop)

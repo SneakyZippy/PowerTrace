@@ -181,7 +181,7 @@ fun ChargeSessionDetailBottomSheet(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Charging Curve Graph
-            ChargeCurveChart(samples = samples)
+            ChargeCurveChart(samples = samples, session = currentSession)
 
             Spacer(modifier = Modifier.height(16.dp))
 

@@ -313,7 +313,7 @@ fun AccessoryCatalogTab(
                                                                         }
                                                                     }
                                                                     Text(
-                                                                        text = "${pairSessions.size} test(s) • Last: ${TimeFormatUtils.formatDateHeader(bestSession.startTimeMs)}",
+                                                                        text = "${pairSessions.size} test(s) • +${bestSession.batteryGained}% (${bestSession.startBatteryLevel}% → ${bestSession.endBatteryLevel}%)",
                                                                         style = MaterialTheme.typography.labelSmall,
                                                                         color = TextSecondary
                                                                     )
@@ -514,7 +514,7 @@ fun AccessoryCatalogTab(
                                                                         }
                                                                     }
                                                                     Text(
-                                                                        text = "${pairSessions.size} test(s) • Last: ${TimeFormatUtils.formatDateHeader(bestSession.startTimeMs)}",
+                                                                        text = "${pairSessions.size} test(s) • +${bestSession.batteryGained}% (${bestSession.startBatteryLevel}% → ${bestSession.endBatteryLevel}%)",
                                                                         style = MaterialTheme.typography.labelSmall,
                                                                         color = TextSecondary
                                                                     )
@@ -593,7 +593,7 @@ fun AccessoryCatalogTab(
                                             }
                                             Spacer(modifier = Modifier.height(4.dp))
                                             Text(
-                                                text = "${list.size} test(s) • Last: ${TimeFormatUtils.formatDateHeader(bestSession.startTimeMs)}",
+                                                text = "${list.size} test(s) • +${bestSession.batteryGained}% (${bestSession.startBatteryLevel}% → ${bestSession.endBatteryLevel}%)",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = TextSecondary
                                             )

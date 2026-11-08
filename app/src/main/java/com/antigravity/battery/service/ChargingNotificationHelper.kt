@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.antigravity.battery.MainActivity
 import com.antigravity.battery.R
 import com.antigravity.battery.core.model.ChargeTestSession
@@ -84,15 +85,16 @@ object ChargingNotificationHelper {
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification_bolt)
+            .setColor(ContextCompat.getColor(context, R.color.green_primary))
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(pendingContentIntent)
-            .addAction(R.mipmap.ic_launcher, "Tag & Save", pendingContentIntent)
-            .addAction(R.mipmap.ic_launcher, "Dismiss", pendingDismissIntent)
+            .addAction(R.drawable.ic_notification_bolt, "Tag & Save", pendingContentIntent)
+            .addAction(R.drawable.ic_notification_bolt, "Dismiss", pendingDismissIntent)
             .build()
 
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
@@ -154,7 +156,8 @@ object ChargingNotificationHelper {
         val bigBody = "End test now and save the charging session\n+$batteryGain% in $durationStr • Peak ${String.format(Locale.US, "%.1f", session.peakWattage)}W\nAuto-resumes if reconnected within ${remainingSeconds}s"
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification_bolt)
+            .setColor(ContextCompat.getColor(context, R.color.green_primary))
             .setContentTitle(title)
             .setContentText(shortBody)
             .setStyle(NotificationCompat.BigTextStyle().bigText(bigBody))
@@ -162,8 +165,8 @@ object ChargingNotificationHelper {
             .setAutoCancel(true)
             .setTimeoutAfter(remainingSeconds * 1000L)
             .setContentIntent(pendingContentIntent)
-            .addAction(R.mipmap.ic_launcher, "End & Save Now", pendingSaveNowIntent)
-            .addAction(R.mipmap.ic_launcher, "Discard", pendingDiscardIntent)
+            .addAction(R.drawable.ic_notification_bolt, "End & Save Now", pendingSaveNowIntent)
+            .addAction(R.drawable.ic_notification_bolt, "Discard", pendingDiscardIntent)
             .build()
 
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
@@ -229,7 +232,8 @@ object ChargingNotificationHelper {
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification_bolt)
+            .setColor(ContextCompat.getColor(context, R.color.green_primary))
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
@@ -237,8 +241,8 @@ object ChargingNotificationHelper {
             .setAutoCancel(true)
             .setTimeoutAfter(60_000L)
             .setContentIntent(pendingContentIntent)
-            .addAction(R.mipmap.ic_launcher, "Continue", pendingContinueIntent)
-            .addAction(R.mipmap.ic_launcher, "New Session", pendingNewSessionIntent)
+            .addAction(R.drawable.ic_notification_bolt, "Continue", pendingContinueIntent)
+            .addAction(R.drawable.ic_notification_bolt, "New Session", pendingNewSessionIntent)
             .build()
 
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager

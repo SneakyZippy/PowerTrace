@@ -40,19 +40,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.antigravity.battery.core.model.ChargeTelemetrySample
+import com.antigravity.battery.core.model.ChargeTestSession
+import com.antigravity.battery.ui.theme.AccentBlue
 import com.antigravity.battery.ui.theme.CulpritAmber
 import com.antigravity.battery.ui.theme.DarkSurface
 import com.antigravity.battery.ui.theme.DarkSurfaceVariant
 import com.antigravity.battery.ui.theme.GreenPrimary
 import com.antigravity.battery.ui.theme.TextPrimary
 import com.antigravity.battery.ui.theme.TextSecondary
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @Composable
 fun ChargeCurveChart(
     samples: List<ChargeTelemetrySample>,
+    session: ChargeTestSession? = null,
     modifier: Modifier = Modifier
 ) {
     if (samples.isEmpty()) {
@@ -75,15 +75,13 @@ fun ChargeCurveChart(
     }
 
     var selectedSampleIndex by remember { mutableStateOf<Int?>(null) }
-    val timeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
 
-    // Downsample if over 120 points for smooth rendering
-    val displaySamples = remember(samples) {
-        if (samples.size <= 120) samples
-        else {
-            val step = samples.size / 120.0
-            (0 until 120).map { i -> samples[(i * step).toInt().coerceAtMost(samples.lastIndex)] }
-        }
+    val fullSamples = remember(samples, session) {
+        ChargeCurveDataHelper.reconcileSamples(samples, session)
+    }
+
+    val displaySamples = remember(fullSamples) {
+        ChargeCurveDataHelper.downsample(fullSamples, maxPoints = 120)
     }
 
     val maxWattage = remember(displaySamples) {
@@ -95,6 +93,15 @@ fun ChargeCurveChart(
     val maxTemp = remember(displaySamples) {
         (displaySamples.maxOfOrNull { it.tempCelsius } ?: 40f) + 2f
     }
+    val minLevel = remember(displaySamples) {
+        ((displaySamples.minOfOrNull { it.batteryLevel } ?: 0) - 2).coerceAtLeast(0)
+    }
+    val maxLevel = remember(displaySamples) {
+        ((displaySamples.maxOfOrNull { it.batteryLevel } ?: 100) + 2).coerceAtMost(100)
+    }
+    val levelRange = remember(minLevel, maxLevel) {
+        (maxLevel - minLevel).coerceAtLeast(5)
+    }
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -103,32 +110,7 @@ fun ChargeCurveChart(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // Header with legend
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "CHARGING CURVE OVER TIME",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = TextSecondary,
-                    letterSpacing = 1.sp
-                )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(GreenPrimary))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Power (W)", style = MaterialTheme.typography.labelSmall, color = GreenPrimary)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(CulpritAmber))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Temp (°C)", style = MaterialTheme.typography.labelSmall, color = CulpritAmber)
-                    }
-                }
-            }
+            ChargeCurveHeaderWithLegend()
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -142,19 +124,25 @@ fun ChargeCurveChart(
                     modifier = Modifier
                         .fillMaxSize()
                         .pointerInput(displaySamples) {
+                            val startMs = displaySamples.first().timestampMs
+                            val durationMs = (displaySamples.last().timestampMs - startMs).coerceAtLeast(1L)
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
-                                selectedSampleIndex = ((down.position.x / size.width) * (displaySamples.size - 1))
-                                    .toInt()
-                                    .coerceIn(0, displaySamples.lastIndex)
+                                val touchRatio = (down.position.x / size.width).coerceIn(0f, 1f)
+                                val targetTime = startMs + (touchRatio * durationMs).toLong()
+                                selectedSampleIndex = displaySamples.indices.minByOrNull { 
+                                    kotlin.math.abs(displaySamples[it].timestampMs - targetTime) 
+                                } ?: 0
 
                                 do {
                                     val event = awaitPointerEvent()
                                     val ptr = event.changes.firstOrNull { it.pressed }
                                     if (ptr != null) {
-                                        selectedSampleIndex = ((ptr.position.x / size.width) * (displaySamples.size - 1))
-                                            .toInt()
-                                            .coerceIn(0, displaySamples.lastIndex)
+                                        val moveRatio = (ptr.position.x / size.width).coerceIn(0f, 1f)
+                                        val moveTime = startMs + (moveRatio * durationMs).toLong()
+                                        selectedSampleIndex = displaySamples.indices.minByOrNull { 
+                                            kotlin.math.abs(displaySamples[it].timestampMs - moveTime) 
+                                        } ?: 0
                                         ptr.consume()
                                     }
                                 } while (event.changes.any { it.pressed })
@@ -178,41 +166,49 @@ fun ChargeCurveChart(
 
                     if (displaySamples.size < 2) return@Canvas
 
-                    // --- Wattage Path (Green) ---
+                    // --- Paths ---
                     val wPath = Path()
                     val fillPath = Path()
-
                     val tempPath = Path()
+                    val levelPath = Path()
+
+                    val tempRange = (maxTemp - minTemp).coerceAtLeast(1f)
+                    val startMs = displaySamples.first().timestampMs
+                    val durationMs = (displaySamples.last().timestampMs - startMs).coerceAtLeast(1L)
 
                     displaySamples.forEachIndexed { i, sample ->
-                        val x = (i.toFloat() / (displaySamples.size - 1)) * w
+                        val x = ((sample.timestampMs - startMs).toFloat() / durationMs) * w
 
                         // Wattage Y
                         val normW = (sample.wattage / maxWattage).coerceIn(0f, 1f)
                         val yW = h - (normW * h)
 
                         // Temp Y
-                        val tempRange = (maxTemp - minTemp).coerceAtLeast(1f)
                         val normTemp = ((sample.tempCelsius - minTemp) / tempRange).coerceIn(0f, 1f)
                         val yTemp = h - (normTemp * h)
+
+                        // Battery Level Y
+                        val normLevel = ((sample.batteryLevel - minLevel).toFloat() / levelRange).coerceIn(0f, 1f)
+                        val yLevel = h - (normLevel * h)
 
                         if (i == 0) {
                             wPath.moveTo(x, yW)
                             fillPath.moveTo(x, h)
                             fillPath.lineTo(x, yW)
-
                             tempPath.moveTo(x, yTemp)
+                            levelPath.moveTo(x, yLevel)
                         } else {
-                            val prevX = ((i - 1).toFloat() / (displaySamples.size - 1)) * w
                             val prevSample = displaySamples[i - 1]
+                            val prevX = ((prevSample.timestampMs - startMs).toFloat() / durationMs) * w
                             val prevYW = h - ((prevSample.wattage / maxWattage).coerceIn(0f, 1f) * h)
                             val prevYTemp = h - (((prevSample.tempCelsius - minTemp) / tempRange).coerceIn(0f, 1f) * h)
+                            val prevYLevel = h - (((prevSample.batteryLevel - minLevel).toFloat() / levelRange).coerceIn(0f, 1f) * h)
 
                             val cX = (prevX + x) / 2f
                             wPath.cubicTo(cX, prevYW, cX, yW, x, yW)
                             fillPath.cubicTo(cX, prevYW, cX, yW, x, yW)
-
                             tempPath.cubicTo(cX, prevYTemp, cX, yTemp, x, yTemp)
+                            levelPath.cubicTo(cX, prevYLevel, cX, yLevel, x, yLevel)
                         }
                     }
 
@@ -230,25 +226,33 @@ fun ChargeCurveChart(
                         )
                     )
 
-                    // Draw Wattage Line
+                    // Draw Wattage Line (Green)
                     drawPath(
                         path = wPath,
                         color = GreenPrimary,
                         style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
                     )
 
-                    // Draw Temperature Line (dashed/amber)
+                    // Draw Temperature Line (Amber)
                     drawPath(
                         path = tempPath,
                         color = CulpritAmber,
                         style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
                     )
 
+                    // Draw Battery Level Line (AccentBlue)
+                    drawPath(
+                        path = levelPath,
+                        color = AccentBlue,
+                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                    )
+
                     // Draw selected pointer
                     selectedSampleIndex?.let { idx ->
                         val sample = displaySamples[idx]
-                        val x = (idx.toFloat() / (displaySamples.size - 1)) * w
+                        val x = ((sample.timestampMs - startMs).toFloat() / durationMs) * w
                         val yW = h - ((sample.wattage / maxWattage).coerceIn(0f, 1f) * h)
+                        val yLevel = h - (((sample.batteryLevel - minLevel).toFloat() / levelRange).coerceIn(0f, 1f) * h)
 
                         drawLine(
                             color = TextPrimary.copy(alpha = 0.5f),
@@ -262,6 +266,12 @@ fun ChargeCurveChart(
                             radius = 5.dp.toPx(),
                             center = Offset(x, yW)
                         )
+
+                        drawCircle(
+                            color = AccentBlue,
+                            radius = 4.dp.toPx(),
+                            center = Offset(x, yLevel)
+                        )
                     }
                 }
             }
@@ -271,38 +281,7 @@ fun ChargeCurveChart(
             // Inspection bar / Time indicator
             val inspected = selectedSampleIndex?.let { displaySamples.getOrNull(it) } ?: displaySamples.lastOrNull()
             if (inspected != null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(DarkSurfaceVariant)
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = timeFormat.format(Date(inspected.timestampMs)),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextSecondary
-                    )
-                    Text(
-                        text = String.format(Locale.US, "%.1f W", inspected.wattage),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = GreenPrimary
-                    )
-                    Text(
-                        text = String.format(Locale.US, "%.1f°C", inspected.tempCelsius),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = CulpritAmber
-                    )
-                    Text(
-                        text = "${inspected.batteryLevel}%",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextPrimary
-                    )
-                }
+                ChargeCurveInspectionBar(inspected = inspected)
             }
         }
     }

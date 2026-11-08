@@ -365,4 +365,62 @@ class ChargingBenchmarkTest {
         assertEquals(1000L, merged.first().timestampMs)
         assertEquals(15000L, merged.last().timestampMs)
     }
+
+    @Test
+    fun testBatteryLevelResolutionAndGained() {
+        // Valid levels
+        val validSession = ChargeTestSession(
+            startTimeMs = 1000L,
+            endTimeMs = 60000L,
+            startBatteryLevel = 45,
+            endBatteryLevel = 78,
+            peakWattage = 25f,
+            avgWattage = 20f,
+            minVoltageMv = 4000,
+            maxVoltageMv = 4300,
+            peakCurrentMa = 5000,
+            startTempDeciC = 280,
+            maxTempDeciC = 340
+        )
+        assertEquals(33, validSession.batteryGained)
+
+        // Negative start fallback sanity
+        val fallbackSession = ChargeTestSession(
+            startTimeMs = 1000L,
+            endTimeMs = 60000L,
+            startBatteryLevel = -1,
+            endBatteryLevel = 50,
+            peakWattage = 25f,
+            avgWattage = 20f,
+            minVoltageMv = 4000,
+            maxVoltageMv = 4300,
+            peakCurrentMa = 5000,
+            startTempDeciC = 280,
+            maxTempDeciC = 340
+        )
+        assertEquals(0, fallbackSession.batteryGained)
+    }
+
+    @Test
+    fun testBatteryLevelNormalizationForCurve() {
+        val samples = listOf(
+            ChargeTelemetrySample(sessionId = "s1", timestampMs = 1000L, batteryLevel = 20, voltageMv = 3900, currentMa = 4000, wattage = 15f, tempDeciC = 280),
+            ChargeTelemetrySample(sessionId = "s1", timestampMs = 2000L, batteryLevel = 50, voltageMv = 4100, currentMa = 4500, wattage = 18f, tempDeciC = 300),
+            ChargeTelemetrySample(sessionId = "s1", timestampMs = 3000L, batteryLevel = 80, voltageMv = 4300, currentMa = 3000, wattage = 12f, tempDeciC = 320)
+        )
+
+        val minLevel = ((samples.minOfOrNull { it.batteryLevel } ?: 0) - 2).coerceAtLeast(0)
+        val maxLevel = ((samples.maxOfOrNull { it.batteryLevel } ?: 100) + 2).coerceAtMost(100)
+        val levelRange = (maxLevel - minLevel).coerceAtLeast(5)
+
+        assertEquals(18, minLevel)
+        assertEquals(82, maxLevel)
+        assertEquals(64, levelRange)
+
+        val normFirst = ((samples[0].batteryLevel - minLevel).toFloat() / levelRange).coerceIn(0f, 1f)
+        val normLast = ((samples[2].batteryLevel - minLevel).toFloat() / levelRange).coerceIn(0f, 1f)
+
+        assertTrue(normFirst in 0.0f..0.1f)
+        assertTrue(normLast in 0.9f..1.0f)
+    }
 }
