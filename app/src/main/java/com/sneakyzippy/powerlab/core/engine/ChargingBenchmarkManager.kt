@@ -1,0 +1,921 @@
+package com.sneakyzippy.powerlab.core.engine
+
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.SharedPreferences
+import android.os.BatteryManager
+import com.sneakyzippy.powerlab.core.model.ChargeTelemetrySample
+import com.sneakyzippy.powerlab.core.model.ChargeTestSession
+import com.sneakyzippy.powerlab.core.model.LiveChargeTelemetry
+import com.sneakyzippy.powerlab.core.model.ReconnectPromptSession
+import com.sneakyzippy.powerlab.data.db.BatteryDatabase
+import com.sneakyzippy.powerlab.data.repository.AccessoryRepository
+import com.sneakyzippy.powerlab.service.ChargingNotificationHelper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import java.util.UUID
+
+/**
+ * Manages charging telemetry sampling, real-time metrics calculation,
+ * and completion criteria checking.
+ */
+class ChargingBenchmarkManager private constructor(private val context: Context) {
+
+    private val scope = CoroutineScope(Dispatchers.Default)
+    private var samplingJob: Job? = null
+
+    private val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+    private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val repository = AccessoryRepository(BatteryDatabase.getInstance(context).accessoryDao())
+
+    private val _liveTelemetry = MutableStateFlow(LiveChargeTelemetry())
+    val liveTelemetry: StateFlow<LiveChargeTelemetry> = _liveTelemetry.asStateFlow()
+
+    // State for the ongoing session
+    private var activeSessionId: String = UUID.randomUUID().toString()
+    private var sessionStartTimeMs: Long = 0L
+    private var startBatteryLevel: Int = -1
+    private var startTempDeciC: Int = 0
+    private var peakWattage: Float = 0f
+    private var peakCurrentMa: Int = 0
+    private var minVoltageMv: Int = Int.MAX_VALUE
+    private var maxVoltageMv: Int = 0
+    private var maxTempDeciC: Int = 0
+    private var wattageSum: Double = 0.0
+    private var sampleCount: Int = 0
+    private var isThrottled: Boolean = false
+    private var lastKnownPlugged: Boolean = false
+
+    private val powerReceiver = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context, intent: Intent) {
+            when (intent.action) {
+                Intent.ACTION_POWER_CONNECTED -> onPowerConnected()
+                Intent.ACTION_POWER_DISCONNECTED -> onPowerDisconnected()
+            }
+        }
+    }
+
+    // Selected accessories during a live test
+    var activeBrickId: String? = null
+    var activeCableId: String? = null
+    var activeBrickName: String = "Unspecified Charger"
+    var activeCableName: String = "Unspecified Cable"
+
+    private val samplesList = mutableListOf<ChargeTelemetrySample>()
+
+    // Last completed session waiting to be tagged/saved
+    private val _pendingCompletedSession = MutableStateFlow<Pair<ChargeTestSession, List<ChargeTelemetrySample>>?>(null)
+    val pendingCompletedSession: StateFlow<Pair<ChargeTestSession, List<ChargeTelemetrySample>>?> = _pendingCompletedSession.asStateFlow()
+
+    // Reconnect prompt for resuming shortly disconnected sessions
+    private val _reconnectPrompt = MutableStateFlow<ReconnectPromptSession?>(null)
+    val reconnectPrompt: StateFlow<ReconnectPromptSession?> = _reconnectPrompt.asStateFlow()
+
+    private val _isGracePeriodActive = MutableStateFlow(false)
+    val isGracePeriodActive: StateFlow<Boolean> = _isGracePeriodActive.asStateFlow()
+
+    private data class PausedSessionData(
+        val sessionId: String,
+        val brickId: String?,
+        val cableId: String?,
+        val brickName: String,
+        val cableName: String,
+        val startTimeMs: Long,
+        val disconnectTimeMs: Long,
+        val startBatteryLevel: Int,
+        val endBatteryLevel: Int,
+        val startTempDeciC: Int,
+        val maxTempDeciC: Int,
+        val peakWattage: Float,
+        val peakCurrentMa: Int,
+        val minVoltageMv: Int,
+        val maxVoltageMv: Int,
+        val wattageSum: Double,
+        val sampleCount: Int,
+        val isThrottled: Boolean,
+        val samples: List<ChargeTelemetrySample>
+    )
+
+    private var pausedSessionData: PausedSessionData? = null
+    private var gracePeriodTimerJob: Job? = null
+    private var promptAutoResumeJob: Job? = null
+
+    companion object {
+        const val PREFS_NAME = "powerlab_accessory_prefs"
+        const val PREF_KEY_AUTO_PROMPT_ENABLED = "auto_prompt_enabled"
+        const val PREF_KEY_MIN_DURATION_MINUTES = "min_duration_minutes"
+        const val PREF_KEY_MIN_BATTERY_GAIN = "min_battery_gain"
+        const val PREF_KEY_DISCONNECT_GRACE_ENABLED = "disconnect_grace_enabled"
+        const val PREF_KEY_DISCONNECT_GRACE_SECONDS = "disconnect_grace_seconds"
+
+        const val PREF_KEY_ACTIVE_SESSION_ID = "active_charge_session_id"
+        const val PREF_KEY_ACTIVE_START_TIME_MS = "active_charge_start_time_ms"
+        const val PREF_KEY_ACTIVE_START_LEVEL = "active_charge_start_level"
+        const val PREF_KEY_ACTIVE_START_TEMP = "active_charge_start_temp"
+        const val PREF_KEY_ACTIVE_BRICK_ID = "active_charge_brick_id"
+        const val PREF_KEY_ACTIVE_CABLE_ID = "active_charge_cable_id"
+        const val PREF_KEY_ACTIVE_BRICK_NAME = "active_charge_brick_name"
+        const val PREF_KEY_ACTIVE_CABLE_NAME = "active_charge_cable_name"
+        const val PREF_KEY_ACTIVE_PEAK_WATTAGE = "active_charge_peak_wattage"
+        const val PREF_KEY_ACTIVE_PEAK_CURRENT = "active_charge_peak_current"
+        const val PREF_KEY_ACTIVE_MIN_VOLTAGE = "active_charge_min_voltage"
+        const val PREF_KEY_ACTIVE_MAX_VOLTAGE = "active_charge_max_voltage"
+        const val PREF_KEY_ACTIVE_MAX_TEMP = "active_charge_max_temp"
+        const val PREF_KEY_ACTIVE_WATTAGE_SUM = "active_charge_wattage_sum"
+        const val PREF_KEY_ACTIVE_SAMPLE_COUNT = "active_charge_sample_count"
+        const val PREF_KEY_ACTIVE_IS_THROTTLED = "active_charge_is_throttled"
+
+        const val DEFAULT_MIN_DURATION_MINUTES = 0
+        const val DEFAULT_MIN_BATTERY_GAIN = 0
+        const val DEFAULT_DISCONNECT_GRACE_SECONDS = 60
+
+        fun qualifiesForPrompt(
+            durationMs: Long,
+            batteryGained: Int,
+            minDurationMs: Long,
+            minBatteryGain: Int
+        ): Boolean {
+            return durationMs >= minDurationMs && batteryGained >= minBatteryGain
+        }
+
+        @Volatile
+        private var INSTANCE: ChargingBenchmarkManager? = null
+
+        fun getInstance(context: Context): ChargingBenchmarkManager {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: ChargingBenchmarkManager(context.applicationContext).also { INSTANCE = it }
+            }
+        }
+    }
+
+    init {
+        scope.launch {
+            repository.ensureDefaultPresets()
+        }
+
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_POWER_CONNECTED)
+            addAction(Intent.ACTION_POWER_DISCONNECTED)
+        }
+        context.registerReceiver(powerReceiver, filter)
+
+        // Initial sample & check plug status
+        val batteryStatus = getBatteryIntent()
+        val plugged = batteryStatus?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: -1
+        lastKnownPlugged = plugged == BatteryManager.BATTERY_PLUGGED_AC ||
+                plugged == BatteryManager.BATTERY_PLUGGED_USB ||
+                plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS ||
+                (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && plugged == BatteryManager.BATTERY_PLUGGED_DOCK)
+
+        if (lastKnownPlugged) {
+            if (!restoreActiveSession()) {
+                startSession()
+            } else {
+                startPolling()
+            }
+        } else {
+            // Restore any ongoing persisted session into memory instead of clearing it,
+            // so an unplug event on a cold/restarted process can finalize it properly
+            restoreActiveSession()
+            sampleCurrentState()
+        }
+    }
+
+    private fun persistActiveSession() {
+        if (sessionStartTimeMs <= 0L) return
+        prefs.edit()
+            .putString(PREF_KEY_ACTIVE_SESSION_ID, activeSessionId)
+            .putLong(PREF_KEY_ACTIVE_START_TIME_MS, sessionStartTimeMs)
+            .putInt(PREF_KEY_ACTIVE_START_LEVEL, startBatteryLevel)
+            .putInt(PREF_KEY_ACTIVE_START_TEMP, startTempDeciC)
+            .putString(PREF_KEY_ACTIVE_BRICK_ID, activeBrickId)
+            .putString(PREF_KEY_ACTIVE_CABLE_ID, activeCableId)
+            .putString(PREF_KEY_ACTIVE_BRICK_NAME, activeBrickName)
+            .putString(PREF_KEY_ACTIVE_CABLE_NAME, activeCableName)
+            .putFloat(PREF_KEY_ACTIVE_PEAK_WATTAGE, peakWattage)
+            .putInt(PREF_KEY_ACTIVE_PEAK_CURRENT, peakCurrentMa)
+            .putInt(PREF_KEY_ACTIVE_MIN_VOLTAGE, minVoltageMv)
+            .putInt(PREF_KEY_ACTIVE_MAX_VOLTAGE, maxVoltageMv)
+            .putInt(PREF_KEY_ACTIVE_MAX_TEMP, maxTempDeciC)
+            .putFloat(PREF_KEY_ACTIVE_WATTAGE_SUM, wattageSum.toFloat())
+            .putInt(PREF_KEY_ACTIVE_SAMPLE_COUNT, sampleCount)
+            .putBoolean(PREF_KEY_ACTIVE_IS_THROTTLED, isThrottled)
+            .apply()
+    }
+
+    private fun restoreActiveSession(): Boolean {
+        val savedStartTime = prefs.getLong(PREF_KEY_ACTIVE_START_TIME_MS, 0L)
+        if (savedStartTime <= 0L) return false
+
+        activeSessionId = prefs.getString(PREF_KEY_ACTIVE_SESSION_ID, null) ?: UUID.randomUUID().toString()
+        sessionStartTimeMs = savedStartTime
+        startBatteryLevel = prefs.getInt(PREF_KEY_ACTIVE_START_LEVEL, -1)
+        startTempDeciC = prefs.getInt(PREF_KEY_ACTIVE_START_TEMP, 0)
+        activeBrickId = prefs.getString(PREF_KEY_ACTIVE_BRICK_ID, null)
+        activeCableId = prefs.getString(PREF_KEY_ACTIVE_CABLE_ID, null)
+        activeBrickName = prefs.getString(PREF_KEY_ACTIVE_BRICK_NAME, "Unspecified Charger") ?: "Unspecified Charger"
+        activeCableName = prefs.getString(PREF_KEY_ACTIVE_CABLE_NAME, "Unspecified Cable") ?: "Unspecified Cable"
+        peakWattage = prefs.getFloat(PREF_KEY_ACTIVE_PEAK_WATTAGE, 0f)
+        peakCurrentMa = prefs.getInt(PREF_KEY_ACTIVE_PEAK_CURRENT, 0)
+        minVoltageMv = prefs.getInt(PREF_KEY_ACTIVE_MIN_VOLTAGE, Int.MAX_VALUE)
+        maxVoltageMv = prefs.getInt(PREF_KEY_ACTIVE_MAX_VOLTAGE, 0)
+        maxTempDeciC = prefs.getInt(PREF_KEY_ACTIVE_MAX_TEMP, 0)
+        wattageSum = prefs.getFloat(PREF_KEY_ACTIVE_WATTAGE_SUM, 0f).toDouble()
+        sampleCount = prefs.getInt(PREF_KEY_ACTIVE_SAMPLE_COUNT, 0)
+        isThrottled = prefs.getBoolean(PREF_KEY_ACTIVE_IS_THROTTLED, false)
+        return true
+    }
+
+    private fun clearPersistedActiveSession() {
+        prefs.edit()
+            .remove(PREF_KEY_ACTIVE_SESSION_ID)
+            .remove(PREF_KEY_ACTIVE_START_TIME_MS)
+            .remove(PREF_KEY_ACTIVE_START_LEVEL)
+            .remove(PREF_KEY_ACTIVE_START_TEMP)
+            .remove(PREF_KEY_ACTIVE_BRICK_ID)
+            .remove(PREF_KEY_ACTIVE_CABLE_ID)
+            .remove(PREF_KEY_ACTIVE_BRICK_NAME)
+            .remove(PREF_KEY_ACTIVE_CABLE_NAME)
+            .remove(PREF_KEY_ACTIVE_PEAK_WATTAGE)
+            .remove(PREF_KEY_ACTIVE_PEAK_CURRENT)
+            .remove(PREF_KEY_ACTIVE_MIN_VOLTAGE)
+            .remove(PREF_KEY_ACTIVE_MAX_VOLTAGE)
+            .remove(PREF_KEY_ACTIVE_MAX_TEMP)
+            .remove(PREF_KEY_ACTIVE_WATTAGE_SUM)
+            .remove(PREF_KEY_ACTIVE_SAMPLE_COUNT)
+            .remove(PREF_KEY_ACTIVE_IS_THROTTLED)
+            .apply()
+    }
+
+    fun isAutoPromptEnabled(): Boolean = prefs.getBoolean(PREF_KEY_AUTO_PROMPT_ENABLED, true)
+    fun setAutoPromptEnabled(enabled: Boolean) = prefs.edit().putBoolean(PREF_KEY_AUTO_PROMPT_ENABLED, enabled).apply()
+
+    fun getMinDurationMinutes(): Int = prefs.getInt(PREF_KEY_MIN_DURATION_MINUTES, DEFAULT_MIN_DURATION_MINUTES)
+    fun setMinDurationMinutes(minutes: Int) = prefs.edit().putInt(PREF_KEY_MIN_DURATION_MINUTES, minutes).apply()
+
+    fun getMinBatteryGain(): Int = prefs.getInt(PREF_KEY_MIN_BATTERY_GAIN, DEFAULT_MIN_BATTERY_GAIN)
+    fun setMinBatteryGain(gain: Int) = prefs.edit().putInt(PREF_KEY_MIN_BATTERY_GAIN, gain).apply()
+
+    fun shouldPromptForSession(session: ChargeTestSession): Boolean {
+        return shouldPromptForSession(session.durationMs, session.batteryGained)
+    }
+
+    fun shouldPromptForSession(durationMs: Long, batteryGained: Int): Boolean {
+        if (!isAutoPromptEnabled()) return false
+        val minDurationMs = getMinDurationMinutes() * 60 * 1000L
+        val minGain = getMinBatteryGain()
+        return qualifiesForPrompt(durationMs, batteryGained, minDurationMs, minGain)
+    }
+
+    fun isDisconnectGraceEnabled(): Boolean = prefs.getBoolean(PREF_KEY_DISCONNECT_GRACE_ENABLED, true)
+    fun setDisconnectGraceEnabled(enabled: Boolean) = prefs.edit().putBoolean(PREF_KEY_DISCONNECT_GRACE_ENABLED, enabled).apply()
+
+    fun getDisconnectGraceSeconds(): Int = prefs.getInt(PREF_KEY_DISCONNECT_GRACE_SECONDS, DEFAULT_DISCONNECT_GRACE_SECONDS)
+    fun setDisconnectGraceSeconds(seconds: Int) = prefs.edit().putInt(PREF_KEY_DISCONNECT_GRACE_SECONDS, seconds).apply()
+
+    @Synchronized
+    fun onPowerConnected() {
+        if (lastKnownPlugged && sessionStartTimeMs > 0L && pausedSessionData == null) {
+            // Already connected and session is actively recording
+            return
+        }
+        lastKnownPlugged = true
+        gracePeriodTimerJob?.cancel()
+        gracePeriodTimerJob = null
+        _isGracePeriodActive.value = false
+        ChargingNotificationHelper.cancelDisconnectGraceNotification(context)
+
+        val paused = pausedSessionData
+        val nowMs = System.currentTimeMillis()
+
+        if (paused != null && isDisconnectGraceEnabled()) {
+            val disconnectDurationMs = nowMs - paused.disconnectTimeMs
+            val graceMs = getDisconnectGraceSeconds() * 1000L
+            val wasMeaningfulSession = (paused.sampleCount >= 2 || paused.samples.size >= 2) && (paused.disconnectTimeMs - paused.startTimeMs) >= 5_000L
+
+            if (disconnectDurationMs <= graceMs && wasMeaningfulSession) {
+                // Dismiss pending save prompt since we reconnected within grace
+                _pendingCompletedSession.value = null
+                ChargingNotificationHelper.cancelNotification(context)
+                ChargingNotificationHelper.cancelDisconnectGraceNotification(context)
+                ChargingNotificationHelper.cancelReconnectNotification(context)
+
+                // Seamlessly auto-resume previous session immediately without forcing user to tap "Resume"
+                resumePreviousSession()
+                startPolling()
+                return
+            } else {
+                finalizePausedSession()
+            }
+        } else if (sessionStartTimeMs <= 0L && restoreActiveSession()) {
+            // Restored ongoing session from persistent storage
+            startPolling()
+            return
+        }
+
+        startSession()
+    }
+
+    @Synchronized
+    fun onPowerDisconnected(): ChargeTestSession? {
+        if (!lastKnownPlugged && pausedSessionData != null) {
+            // Already handled disconnect
+            return null
+        }
+        lastKnownPlugged = false
+        promptAutoResumeJob?.cancel()
+        promptAutoResumeJob = null
+        ChargingNotificationHelper.cancelReconnectNotification(context)
+        _reconnectPrompt.value = null
+
+        if (sessionStartTimeMs <= 0L) {
+            restoreActiveSession()
+        }
+
+        val nowMs = System.currentTimeMillis()
+        val durationMs = if (sessionStartTimeMs > 0L) nowMs - sessionStartTimeMs else 0L
+
+        // If no active session or it was less than 5s with few samples, don't pause it for resume
+        if (sessionStartTimeMs == 0L || (sampleCount < 2 && durationMs < 5_000L)) {
+            clearPersistedActiveSession()
+            sessionStartTimeMs = 0L
+            peakWattage = 0f
+            peakCurrentMa = 0
+            wattageSum = 0.0
+            sampleCount = 0
+            isThrottled = false
+            samplesList.clear()
+            _isGracePeriodActive.value = false
+            sampleCurrentState()
+            return null
+        }
+
+        if (!isDisconnectGraceEnabled()) {
+            return endSession()
+        }
+
+        val batteryStatus = getBatteryIntent()
+        val rawEndLevel = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+        val bmCapacity = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+        val resolvedEndLevel = when {
+            rawEndLevel >= 0 -> rawEndLevel
+            bmCapacity >= 0 -> bmCapacity
+            samplesList.isNotEmpty() -> samplesList.last().batteryLevel
+            startBatteryLevel >= 0 -> startBatteryLevel
+            else -> 0
+        }
+        val resolvedStartLevel = if (startBatteryLevel >= 0) {
+            startBatteryLevel
+        } else {
+            samplesList.firstOrNull()?.batteryLevel ?: resolvedEndLevel
+        }
+        startBatteryLevel = resolvedStartLevel
+
+        val paused = PausedSessionData(
+            sessionId = activeSessionId,
+            brickId = activeBrickId,
+            cableId = activeCableId,
+            brickName = activeBrickName,
+            cableName = activeCableName,
+            startTimeMs = sessionStartTimeMs,
+            disconnectTimeMs = nowMs,
+            startBatteryLevel = resolvedStartLevel,
+            endBatteryLevel = resolvedEndLevel,
+            startTempDeciC = startTempDeciC,
+            maxTempDeciC = maxTempDeciC,
+            peakWattage = peakWattage,
+            peakCurrentMa = peakCurrentMa,
+            minVoltageMv = minVoltageMv,
+            maxVoltageMv = maxVoltageMv,
+            wattageSum = wattageSum,
+            sampleCount = sampleCount,
+            isThrottled = isThrottled,
+            samples = samplesList.toList()
+        )
+        pausedSessionData = paused
+        _isGracePeriodActive.value = true
+
+        val avgWattage = if (paused.sampleCount > 0) (paused.wattageSum / paused.sampleCount).toFloat() else paused.peakWattage
+        val session = ChargeTestSession(
+            id = paused.sessionId,
+            brickId = paused.brickId,
+            cableId = paused.cableId,
+            brickName = paused.brickName,
+            cableName = paused.cableName,
+            startTimeMs = paused.startTimeMs,
+            endTimeMs = paused.disconnectTimeMs,
+            startBatteryLevel = paused.startBatteryLevel,
+            endBatteryLevel = paused.endBatteryLevel,
+            peakWattage = paused.peakWattage,
+            avgWattage = avgWattage,
+            minVoltageMv = if (paused.minVoltageMv == Int.MAX_VALUE) 0 else paused.minVoltageMv,
+            maxVoltageMv = paused.maxVoltageMv,
+            peakCurrentMa = paused.peakCurrentMa,
+            startTempDeciC = paused.startTempDeciC,
+            maxTempDeciC = paused.maxTempDeciC,
+            isThrottled = paused.isThrottled
+        )
+
+        // Auto-save completed session immediately so long/overnight sessions are safely preserved
+        scope.launch {
+            repository.saveSession(session, paused.samples)
+        }
+        clearPersistedActiveSession()
+
+        val autoPrompt = shouldPromptForSession(session)
+
+        // Show completed session prompt immediately without making the user wait for grace countdown
+        if (autoPrompt) {
+            _pendingCompletedSession.value = Pair(session, paused.samples)
+            ChargingNotificationHelper.showSessionFinishedNotification(context, session)
+        }
+
+        // Reset live ongoing session trackers so it's not marked as actively charging
+        sessionStartTimeMs = 0L
+        peakWattage = 0f
+        peakCurrentMa = 0
+        wattageSum = 0.0
+        sampleCount = 0
+        isThrottled = false
+        samplesList.clear()
+
+        // Start grace countdown timer: keeps pausedSessionData in case of brief disconnect/reconnect
+        gracePeriodTimerJob?.cancel()
+        gracePeriodTimerJob = scope.launch {
+            val totalSeconds = getDisconnectGraceSeconds()
+            for (remaining in totalSeconds downTo 1) {
+                if (!isActive) break
+                sampleCurrentState()
+                delay(1000L)
+            }
+            if (isActive) {
+                // Grace window elapsed without reconnect: session can no longer be resumed
+                _isGracePeriodActive.value = false
+                pausedSessionData = null
+                sampleCurrentState()
+            }
+        }
+
+        sampleCurrentState()
+        return session
+    }
+
+    @Synchronized
+    fun finalizePausedSession(forcePrompt: Boolean = false): ChargeTestSession? {
+        gracePeriodTimerJob?.cancel()
+        gracePeriodTimerJob = null
+        _isGracePeriodActive.value = false
+        ChargingNotificationHelper.cancelDisconnectGraceNotification(context)
+
+        val paused = pausedSessionData
+        pausedSessionData = null
+
+        val session = if (paused != null) {
+            val avgWattage = if (paused.sampleCount > 0) (paused.wattageSum / paused.sampleCount).toFloat() else paused.peakWattage
+            ChargeTestSession(
+                id = paused.sessionId,
+                brickId = paused.brickId,
+                cableId = paused.cableId,
+                brickName = paused.brickName,
+                cableName = paused.cableName,
+                startTimeMs = paused.startTimeMs,
+                endTimeMs = paused.disconnectTimeMs,
+                startBatteryLevel = paused.startBatteryLevel,
+                endBatteryLevel = paused.endBatteryLevel,
+                peakWattage = paused.peakWattage,
+                avgWattage = avgWattage,
+                minVoltageMv = if (paused.minVoltageMv == Int.MAX_VALUE) 0 else paused.minVoltageMv,
+                maxVoltageMv = paused.maxVoltageMv,
+                peakCurrentMa = paused.peakCurrentMa,
+                startTempDeciC = paused.startTempDeciC,
+                maxTempDeciC = paused.maxTempDeciC,
+                isThrottled = paused.isThrottled
+            )
+        } else {
+            _pendingCompletedSession.value?.first
+        } ?: return null
+
+        val samples = paused?.samples ?: _pendingCompletedSession.value?.second ?: emptyList()
+
+        val autoPrompt = shouldPromptForSession(session)
+
+        if (forcePrompt || autoPrompt) {
+            _pendingCompletedSession.value = Pair(session, samples)
+            if (!forcePrompt) {
+                ChargingNotificationHelper.showSessionFinishedNotification(context, session)
+            }
+        }
+
+        sampleCurrentState()
+        return session
+    }
+
+    fun finalizePausedSessionNow() {
+        promptAutoResumeJob?.cancel()
+        promptAutoResumeJob = null
+        gracePeriodTimerJob?.cancel()
+        gracePeriodTimerJob = null
+        _isGracePeriodActive.value = false
+        ChargingNotificationHelper.cancelDisconnectGraceNotification(context)
+        ChargingNotificationHelper.cancelReconnectNotification(context)
+        _reconnectPrompt.value = null
+        finalizePausedSession(forcePrompt = true)
+    }
+
+    fun discardPausedSessionNow() {
+        promptAutoResumeJob?.cancel()
+        promptAutoResumeJob = null
+        gracePeriodTimerJob?.cancel()
+        gracePeriodTimerJob = null
+        _isGracePeriodActive.value = false
+        pausedSessionData = null
+        _pendingCompletedSession.value = null
+        ChargingNotificationHelper.cancelNotification(context)
+        ChargingNotificationHelper.cancelDisconnectGraceNotification(context)
+        ChargingNotificationHelper.cancelReconnectNotification(context)
+        _reconnectPrompt.value = null
+        sampleCurrentState()
+    }
+
+    @Synchronized
+    fun resumePreviousSession() {
+        promptAutoResumeJob?.cancel()
+        promptAutoResumeJob = null
+        ChargingNotificationHelper.cancelReconnectNotification(context)
+        _reconnectPrompt.value = null
+
+        val paused = pausedSessionData ?: return
+        pausedSessionData = null
+
+        // Merge previous paused session with any samples collected since reconnect
+        activeSessionId = paused.sessionId
+        activeBrickId = paused.brickId
+        activeCableId = paused.cableId
+        activeBrickName = paused.brickName
+        activeCableName = paused.cableName
+
+        sessionStartTimeMs = paused.startTimeMs
+        startBatteryLevel = paused.startBatteryLevel
+        startTempDeciC = paused.startTempDeciC
+
+        peakWattage = maxOf(peakWattage, paused.peakWattage)
+        peakCurrentMa = maxOf(peakCurrentMa, paused.peakCurrentMa)
+        minVoltageMv = minOf(minVoltageMv, paused.minVoltageMv)
+        maxVoltageMv = maxOf(maxVoltageMv, paused.maxVoltageMv)
+        maxTempDeciC = maxOf(maxTempDeciC, paused.maxTempDeciC)
+
+        wattageSum += paused.wattageSum
+        sampleCount += paused.sampleCount
+        isThrottled = isThrottled || paused.isThrottled
+
+        val combinedSamples = (paused.samples + samplesList).takeLast(600)
+        samplesList.clear()
+        samplesList.addAll(combinedSamples)
+
+        sampleCurrentState()
+    }
+
+    @Synchronized
+    fun startNewSessionFromPrompt() {
+        promptAutoResumeJob?.cancel()
+        promptAutoResumeJob = null
+        ChargingNotificationHelper.cancelReconnectNotification(context)
+        _reconnectPrompt.value = null
+
+        finalizePausedSession()
+        startSession()
+        sampleCurrentState()
+    }
+
+    @Synchronized
+    fun startSession(brickId: String? = activeBrickId, cableId: String? = activeCableId) {
+        ChargingNotificationHelper.cancelNotification(context)
+        ChargingNotificationHelper.cancelReconnectNotification(context)
+        activeBrickId = brickId
+        activeCableId = cableId
+        activeSessionId = UUID.randomUUID().toString()
+        sessionStartTimeMs = System.currentTimeMillis()
+        wattageSum = 0.0
+        sampleCount = 0
+        peakWattage = 0f
+        peakCurrentMa = 0
+        minVoltageMv = Int.MAX_VALUE
+        maxVoltageMv = 0
+        maxTempDeciC = 0
+        isThrottled = false
+        samplesList.clear()
+
+        val batteryStatus = getBatteryIntent()
+        startBatteryLevel = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        if (startBatteryLevel < 0) {
+            val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+            startBatteryLevel = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+        }
+        startTempDeciC = batteryStatus?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
+
+        persistActiveSession()
+        startPolling()
+    }
+
+    @Synchronized
+    fun endSession(): ChargeTestSession? {
+        if (sessionStartTimeMs == 0L) return null
+
+        val endTimeMs = System.currentTimeMillis()
+        val batteryStatus = getBatteryIntent()
+        val rawEndLevel = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+        val bmCapacity = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+        val resolvedEndLevel = when {
+            rawEndLevel >= 0 -> rawEndLevel
+            bmCapacity >= 0 -> bmCapacity
+            samplesList.isNotEmpty() -> samplesList.last().batteryLevel
+            startBatteryLevel >= 0 -> startBatteryLevel
+            else -> 0
+        }
+        val resolvedStartLevel = if (startBatteryLevel >= 0) {
+            startBatteryLevel
+        } else {
+            samplesList.firstOrNull()?.batteryLevel ?: resolvedEndLevel
+        }
+        startBatteryLevel = resolvedStartLevel
+        val avgWattage = if (sampleCount > 0) (wattageSum / sampleCount).toFloat() else peakWattage
+
+        val session = ChargeTestSession(
+            id = activeSessionId,
+            brickId = activeBrickId,
+            cableId = activeCableId,
+            brickName = activeBrickName,
+            cableName = activeCableName,
+            startTimeMs = sessionStartTimeMs,
+            endTimeMs = endTimeMs,
+            startBatteryLevel = resolvedStartLevel,
+            endBatteryLevel = resolvedEndLevel,
+            peakWattage = peakWattage,
+            avgWattage = avgWattage,
+            minVoltageMv = if (minVoltageMv == Int.MAX_VALUE) 0 else minVoltageMv,
+            maxVoltageMv = maxVoltageMv,
+            peakCurrentMa = peakCurrentMa,
+            startTempDeciC = startTempDeciC,
+            maxTempDeciC = maxTempDeciC,
+            isThrottled = isThrottled
+        )
+
+        // Auto-save session immediately to Room database
+        scope.launch {
+            repository.saveSession(session, samplesList.toList())
+        }
+        clearPersistedActiveSession()
+
+        // Check if session qualifies for prompt
+        val autoPrompt = shouldPromptForSession(session)
+
+        if (autoPrompt) {
+            _pendingCompletedSession.value = Pair(session, samplesList.toList())
+            ChargingNotificationHelper.showSessionFinishedNotification(context, session)
+        }
+
+        sessionStartTimeMs = 0L
+        peakWattage = 0f
+        peakCurrentMa = 0
+        wattageSum = 0.0
+        sampleCount = 0
+        isThrottled = false
+
+        sampleCurrentState()
+        return session
+    }
+
+    fun clearPendingSession() {
+        _pendingCompletedSession.value = null
+        gracePeriodTimerJob?.cancel()
+        gracePeriodTimerJob = null
+        _isGracePeriodActive.value = false
+        pausedSessionData = null
+        ChargingNotificationHelper.cancelNotification(context)
+        ChargingNotificationHelper.cancelDisconnectGraceNotification(context)
+        ChargingNotificationHelper.cancelReconnectNotification(context)
+        sampleCurrentState()
+    }
+
+    fun setPendingSession(session: ChargeTestSession, samples: List<ChargeTelemetrySample>) {
+        _pendingCompletedSession.value = Pair(session, samples)
+    }
+
+    fun saveCompletedSession(
+        brickId: String?,
+        cableId: String?,
+        brickName: String,
+        cableName: String,
+        notes: String = ""
+    ) {
+        ChargingNotificationHelper.cancelNotification(context)
+        val pending = _pendingCompletedSession.value ?: return
+        val updatedSession = pending.first.copy(
+            brickId = brickId,
+            cableId = cableId,
+            brickName = brickName,
+            cableName = cableName,
+            notes = notes
+        )
+        val samples = pending.second
+
+        scope.launch {
+            repository.saveSession(updatedSession, samples)
+            clearPendingSession()
+        }
+    }
+
+    fun startPolling() {
+        if (samplingJob?.isActive == true) return
+        samplingJob = scope.launch {
+            while (isActive) {
+                sampleCurrentState()
+                delay(1000L) // 1 second sample rate
+            }
+        }
+    }
+
+    fun stopPolling() {
+        samplingJob?.cancel()
+        samplingJob = null
+    }
+
+    @Synchronized
+    fun sampleCurrentState() {
+        val batteryStatus = getBatteryIntent() ?: return
+
+        val status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+        val plugged = batteryStatus.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1)
+
+        val isPlugged = plugged == BatteryManager.BATTERY_PLUGGED_AC ||
+                plugged == BatteryManager.BATTERY_PLUGGED_USB ||
+                plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS ||
+                (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && plugged == BatteryManager.BATTERY_PLUGGED_DOCK)
+
+        val bmCharging = batteryManager.isCharging
+        val isCharging = isPlugged && (status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == BatteryManager.BATTERY_STATUS_FULL ||
+                bmCharging)
+
+        if (!lastKnownPlugged && isPlugged) {
+            onPowerConnected()
+            return
+        } else if (lastKnownPlugged && !isPlugged) {
+            onPowerDisconnected()
+            return
+        }
+
+        val plugType = when {
+            plugged == BatteryManager.BATTERY_PLUGGED_AC -> "AC Wall Charger"
+            plugged == BatteryManager.BATTERY_PLUGGED_USB -> "USB Port"
+            plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS -> "Wireless Qi Pad"
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && plugged == BatteryManager.BATTERY_PLUGGED_DOCK -> "Pixel Stand / Dock"
+            else -> if (isCharging) "Charging" else "Unplugged"
+        }
+
+        val rawLevel = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val level = if (rawLevel >= 0) rawLevel else {
+            val cap = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            if (cap >= 0) cap else 0
+        }.coerceIn(0, 100)
+        val voltageMv = batteryStatus.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0)
+        val tempDeciC = batteryStatus.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)
+
+        // Read instantaneous current
+        // Standard Android: positive = charging into battery, negative = discharging out of battery
+        val rawProperty = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+        val rawCurrent = if (rawProperty != Int.MIN_VALUE) rawProperty else 0
+
+        // Android API contract: BATTERY_PROPERTY_CURRENT_NOW is strictly in microamperes (uA).
+        // 1 mA = 1,000 uA. Low trickle charge (e.g. 43 mA) is 43,000 uA.
+        // Convert to mA by dividing by 1,000.
+        val rawMa = rawCurrent / 1000
+
+        // Net charging current into battery (mA). Must be strictly positive and only when charging.
+        // Cap at physically plausible phone battery charging current (max 25,000 mA / 25A for high-speed multi-cell charging).
+        val chargingCurrentMa = if (isCharging && rawMa > 0) rawMa.coerceAtMost(25_000) else 0
+
+        // Wattage = V (mV) * I (mA) / 1,000,000
+        // Voltage range 2,000mV to 12,000mV supports both single-cell and dual-cell series packs
+        // Physical sanity cap: max 240W (USB-PD 3.1 Extended Power Range spec) prevents integer corruption
+        val computedWattage = if (isCharging && voltageMv in 2000..12000 && chargingCurrentMa > 0) {
+            (voltageMv.toFloat() * chargingCurrentMa.toFloat()) / 1_000_000f
+        } else {
+            0f
+        }
+        val wattage = computedWattage.coerceIn(0f, 240f)
+
+        val nowMs = System.currentTimeMillis()
+
+        if (isPlugged) {
+            if (sessionStartTimeMs == 0L) {
+                sessionStartTimeMs = nowMs
+                startBatteryLevel = level
+                startTempDeciC = tempDeciC
+                persistActiveSession()
+            } else if (startBatteryLevel < 0 && level >= 0) {
+                startBatteryLevel = level
+                persistActiveSession()
+            }
+
+            if (wattage > peakWattage) {
+                peakWattage = wattage
+                persistActiveSession()
+            }
+            if (chargingCurrentMa > peakCurrentMa) peakCurrentMa = chargingCurrentMa
+            if (voltageMv in 1 until minVoltageMv) minVoltageMv = voltageMv
+            if (voltageMv > maxVoltageMv) maxVoltageMv = voltageMv
+            if (tempDeciC > maxTempDeciC) maxTempDeciC = tempDeciC
+
+            if (isCharging) {
+                wattageSum += wattage
+                sampleCount++
+                if (sampleCount % 10 == 0) {
+                    persistActiveSession()
+                }
+
+                // Throttling logic: high temp and wattage dropped below 60% of peak while battery not full
+                if (tempDeciC >= 390 && level < 75 && peakWattage > 10f && wattage < (peakWattage * 0.6f)) {
+                    isThrottled = true
+                }
+            }
+
+            // Maintain full telemetry history across the entire session duration
+            if (samplesList.size >= 1200) {
+                val decimated = mutableListOf<ChargeTelemetrySample>()
+                for (idx in samplesList.indices step 2) {
+                    decimated.add(samplesList[idx])
+                }
+                samplesList.clear()
+                samplesList.addAll(decimated)
+            }
+
+            samplesList.add(
+                ChargeTelemetrySample(
+                    sessionId = activeSessionId,
+                    timestampMs = nowMs,
+                    batteryLevel = level,
+                    voltageMv = voltageMv,
+                    currentMa = chargingCurrentMa,
+                    wattage = wattage,
+                    tempDeciC = tempDeciC
+                )
+            )
+        } else if (!_isGracePeriodActive.value && pausedSessionData == null) {
+            // Truly disconnected from power and not in grace period: reset live metrics
+            sessionStartTimeMs = 0L
+            peakWattage = 0f
+            peakCurrentMa = 0
+            wattageSum = 0.0
+            sampleCount = 0
+            isThrottled = false
+        }
+
+        val avgWattage = if (sampleCount > 0) (wattageSum / sampleCount).toFloat() else wattage
+        val durationMs = if (isPlugged && sessionStartTimeMs > 0L) (nowMs - sessionStartTimeMs) else 0L
+
+        // Display current: when charging show +chargingCurrentMa, when unplugged show rawMa (e.g. -450 mA)
+        val displayMa = if (isCharging) chargingCurrentMa else rawMa
+
+        val remainingGraceSec = if (_isGracePeriodActive.value && pausedSessionData != null) {
+            val elapsedSec = (nowMs - pausedSessionData!!.disconnectTimeMs) / 1000L
+            (getDisconnectGraceSeconds() - elapsedSec).coerceAtLeast(0L).toInt()
+        } else {
+            0
+        }
+
+        _liveTelemetry.value = LiveChargeTelemetry(
+            isCharging = isCharging,
+            chargePlugType = plugType,
+            currentWattage = wattage,
+            currentMa = displayMa,
+            voltageMv = voltageMv,
+            batteryLevelPercent = level,
+            tempDeciCelsius = tempDeciC,
+            peakWattageSoFar = if (isPlugged) peakWattage else 0f,
+            avgWattageSoFar = if (isPlugged) avgWattage else 0f,
+            sessionDurationMs = durationMs,
+            isThrottlingDetected = if (isPlugged) isThrottled else false,
+            isGracePeriodActive = _isGracePeriodActive.value,
+            gracePeriodRemainingSeconds = remainingGraceSec
+        )
+    }
+
+
+
+    private fun getBatteryIntent(): Intent? {
+        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        return context.registerReceiver(null, filter)
+    }
+}

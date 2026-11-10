@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">PowerTrace</string>
+    <string name="app_name">PowerLab</string>
     <string name="setup_title">ADB Privileges Setup</string>
     <string name="session_title">Observation Session</string>
     <string name="dashboard_title">Drain &amp; Culprits</string>

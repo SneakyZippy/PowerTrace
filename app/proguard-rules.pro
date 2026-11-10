@@ -3,4 +3,4 @@
     public <init>(...);
     public double getAveragePower(...);
 }
--keep class com.antigravity.battery.data.db.** { *; }
+-keep class com.sneakyzippy.powerlab.data.db.** { *; }

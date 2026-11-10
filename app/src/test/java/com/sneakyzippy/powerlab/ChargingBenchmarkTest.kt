@@ -1,0 +1,426 @@
+package com.sneakyzippy.powerlab
+
+import com.sneakyzippy.powerlab.core.engine.ChargingBenchmarkManager
+import com.sneakyzippy.powerlab.core.model.Cable
+import com.sneakyzippy.powerlab.core.model.ChargeTelemetrySample
+import com.sneakyzippy.powerlab.core.model.ChargeTestSession
+import com.sneakyzippy.powerlab.core.model.LiveChargeTelemetry
+import com.sneakyzippy.powerlab.core.model.PowerBrick
+import com.sneakyzippy.powerlab.core.model.ReconnectPromptSession
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class ChargingBenchmarkTest {
+
+    @Test
+    fun testPowerWattageCalculation() {
+        val voltageMv = 4200
+        val currentMa = 6000
+        val wattage = (voltageMv.toFloat() * currentMa.toFloat()) / 1_000_000f
+
+        assertEquals(25.2f, wattage, 0.001f)
+    }
+
+    @Test
+    fun testWirelessTrickleChargingWattage() {
+        // 43,095 microamps (0.043A trickle charge near full on wireless pad)
+        val rawMicroamps = 43095
+        val currentMa = rawMicroamps / 1000 // 43 mA
+        val voltageMv = 4200 // 4.2V
+
+        val wattage = (voltageMv.toFloat() * currentMa.toFloat()) / 1_000_000f
+
+        // Must be ~0.18W, NOT 181W!
+        assertEquals(0.1806f, wattage, 0.01f)
+        assertTrue("Wattage must not be inflated into 180W+", wattage < 1.0f)
+    }
+
+    @Test
+    fun testFastChargePowerCalculation() {
+        val voltageMv = 4350
+        val currentMa = 10000
+        val wattage = (voltageMv.toFloat() * currentMa.toFloat()) / 1_000_000f
+
+        assertEquals(43.5f, wattage, 0.001f)
+    }
+
+    @Test
+    fun testDualCellFastChargePowerCalculation() {
+        // Dual-cell battery pack in series (8.4V nominal) charging at 8A
+        val voltageMv = 8400
+        val currentMa = 8000
+        val wattage = (voltageMv.toFloat() * currentMa.toFloat()) / 1_000_000f
+
+        assertEquals(67.2f, wattage, 0.001f)
+        assertTrue("High wattage should be allowed up to 240W", wattage > 65.0f && wattage < 240.0f)
+    }
+
+    @Test
+    fun testChargeTestSessionCalculations() {
+        val startTime = 1000000L
+        val endTime = startTime + (15 * 60 * 1000L) // 15 mins
+
+        val session = ChargeTestSession(
+            startTimeMs = startTime,
+            endTimeMs = endTime,
+            startBatteryLevel = 20,
+            endBatteryLevel = 55,
+            peakWattage = 33.5f,
+            avgWattage = 26.2f,
+            minVoltageMv = 3900,
+            maxVoltageMv = 4300,
+            peakCurrentMa = 8000,
+            startTempDeciC = 280, // 28.0°C
+            maxTempDeciC = 356,   // 35.6°C
+            isThrottled = false
+        )
+
+        assertEquals(15 * 60 * 1000L, session.durationMs)
+        assertEquals(35, session.batteryGained)
+        assertEquals(28.0f, session.startTempCelsius, 0.01f)
+        assertEquals(35.6f, session.maxTempCelsius, 0.01f)
+        assertFalse(session.isThrottled)
+    }
+
+    @Test
+    fun testSmartThresholdEvaluation() {
+        val minDurationMs = 5 * 60 * 1000L
+        val minGain = 5
+
+        // Case 1: Short session (2 mins), gained 1% -> should not prompt
+        val shortSession = ChargeTestSession(
+            startTimeMs = 1000000L,
+            endTimeMs = 1000000L + (2 * 60 * 1000L),
+            startBatteryLevel = 50,
+            endBatteryLevel = 51,
+            peakWattage = 15f,
+            avgWattage = 12f,
+            minVoltageMv = 4000,
+            maxVoltageMv = 4050,
+            peakCurrentMa = 3000,
+            startTempDeciC = 300,
+            maxTempDeciC = 310
+        )
+        val shortQualifies = ChargingBenchmarkManager.qualifiesForPrompt(
+            shortSession.durationMs, shortSession.batteryGained, minDurationMs, minGain
+        )
+        assertFalse(shortQualifies)
+
+        // Case 2: Long session (10 mins), but 0% gain (e.g. idle high drain) -> should not prompt
+        val flatSession = ChargeTestSession(
+            startTimeMs = 1000000L,
+            endTimeMs = 1000000L + (10 * 60 * 1000L),
+            startBatteryLevel = 90,
+            endBatteryLevel = 90,
+            peakWattage = 3f,
+            avgWattage = 2f,
+            minVoltageMv = 4200,
+            maxVoltageMv = 4200,
+            peakCurrentMa = 500,
+            startTempDeciC = 300,
+            maxTempDeciC = 310
+        )
+        val flatQualifies = ChargingBenchmarkManager.qualifiesForPrompt(
+            flatSession.durationMs, flatSession.batteryGained, minDurationMs, minGain
+        )
+        assertFalse(flatQualifies)
+
+        // Case 3: 8 minutes session, gained 9% -> should qualify for prompt
+        val validSession = ChargeTestSession(
+            startTimeMs = 1000000L,
+            endTimeMs = 1000000L + (8 * 60 * 1000L),
+            startBatteryLevel = 25,
+            endBatteryLevel = 34,
+            peakWattage = 28f,
+            avgWattage = 22f,
+            minVoltageMv = 4000,
+            maxVoltageMv = 4250,
+            peakCurrentMa = 6500,
+            startTempDeciC = 290,
+            maxTempDeciC = 340
+        )
+        val validQualifies = ChargingBenchmarkManager.qualifiesForPrompt(
+            validSession.durationMs, validSession.batteryGained, minDurationMs, minGain
+        )
+        assertTrue(validQualifies)
+    }
+
+    @Test
+    fun testCustomThresholdEvaluationWith10Min10Percent() {
+        val minDurationMs = 10 * 60 * 1000L
+        val minGain = 10
+
+        // 3 mins, gained 12% -> duration insufficient -> should not qualify
+        val shortHighGain = ChargeTestSession(
+            startTimeMs = 1000000L,
+            endTimeMs = 1000000L + (3 * 60 * 1000L),
+            startBatteryLevel = 40,
+            endBatteryLevel = 52,
+            peakWattage = 45f,
+            avgWattage = 35f,
+            minVoltageMv = 4000,
+            maxVoltageMv = 4300,
+            peakCurrentMa = 8000,
+            startTempDeciC = 300,
+            maxTempDeciC = 350
+        )
+        assertFalse(
+            ChargingBenchmarkManager.qualifiesForPrompt(
+                shortHighGain.durationMs, shortHighGain.batteryGained, minDurationMs, minGain
+            )
+        )
+
+        // 15 mins, gained 5% -> gain insufficient -> should not qualify
+        val longLowGain = ChargeTestSession(
+            startTimeMs = 1000000L,
+            endTimeMs = 1000000L + (15 * 60 * 1000L),
+            startBatteryLevel = 80,
+            endBatteryLevel = 85,
+            peakWattage = 10f,
+            avgWattage = 7f,
+            minVoltageMv = 4200,
+            maxVoltageMv = 4350,
+            peakCurrentMa = 1500,
+            startTempDeciC = 300,
+            maxTempDeciC = 330
+        )
+        assertFalse(
+            ChargingBenchmarkManager.qualifiesForPrompt(
+                longLowGain.durationMs, longLowGain.batteryGained, minDurationMs, minGain
+            )
+        )
+
+        // 12 mins, gained 14% -> both thresholds satisfied -> qualifies
+        val qualifiedSession = ChargeTestSession(
+            startTimeMs = 1000000L,
+            endTimeMs = 1000000L + (12 * 60 * 1000L),
+            startBatteryLevel = 30,
+            endBatteryLevel = 44,
+            peakWattage = 33f,
+            avgWattage = 25f,
+            minVoltageMv = 4000,
+            maxVoltageMv = 4300,
+            peakCurrentMa = 6000,
+            startTempDeciC = 300,
+            maxTempDeciC = 340
+        )
+        assertTrue(
+            ChargingBenchmarkManager.qualifiesForPrompt(
+                qualifiedSession.durationMs, qualifiedSession.batteryGained, minDurationMs, minGain
+            )
+        )
+
+        // Negative startBatteryLevel edge case (-1) -> batteryGained is 0 -> should not qualify
+        val uninitializedLevelSession = ChargeTestSession(
+            startTimeMs = 1000000L,
+            endTimeMs = 1000000L + (15 * 60 * 1000L),
+            startBatteryLevel = -1,
+            endBatteryLevel = 50,
+            peakWattage = 20f,
+            avgWattage = 15f,
+            minVoltageMv = 4000,
+            maxVoltageMv = 4200,
+            peakCurrentMa = 4000,
+            startTempDeciC = 300,
+            maxTempDeciC = 320
+        )
+        assertEquals(0, uninitializedLevelSession.batteryGained)
+        assertFalse(
+            ChargingBenchmarkManager.qualifiesForPrompt(
+                uninitializedLevelSession.durationMs, uninitializedLevelSession.batteryGained, minDurationMs, minGain
+            )
+        )
+    }
+
+    @Test
+    fun testLiveTelemetryModel() {
+        val telemetry = LiveChargeTelemetry(
+            isCharging = true,
+            chargePlugType = "AC Wall Charger",
+            currentWattage = 27.5f,
+            currentMa = 6500,
+            voltageMv = 4230,
+            batteryLevelPercent = 42,
+            tempDeciCelsius = 315,
+            peakWattageSoFar = 31.0f,
+            avgWattageSoFar = 25.0f,
+            sessionDurationMs = 180000L,
+            isThrottlingDetected = false
+        )
+
+        assertEquals(4.23f, telemetry.voltageV, 0.001f)
+        assertEquals(31.5f, telemetry.tempCelsius, 0.01f)
+        assertTrue(telemetry.isCharging)
+    }
+
+    @Test
+    fun testAccessoryCreation() {
+        val brick = PowerBrick(
+            name = "Anker 65W GaN",
+            manufacturer = "Anker",
+            ratedWattage = 65f,
+            portType = "USB-C PD"
+        )
+        assertEquals("Anker 65W GaN", brick.name)
+        assertEquals(65f, brick.ratedWattage, 0.01f)
+
+        val cable = Cable(
+            name = "100W 2m Cable",
+            manufacturer = "Baseus",
+            ratedWattage = 100f,
+            lengthMeters = 2.0f,
+            cableType = "Type-C to Type-C"
+        )
+        assertEquals(100f, cable.ratedWattage, 0.01f)
+        assertEquals(2.0f, cable.lengthMeters, 0.01f)
+    }
+
+    @Test
+    fun testDisconnectGracePeriodWithinThreshold() {
+        val disconnectTimeMs = 1000000L
+        val reconnectTimeMs = 1015000L // 15 seconds later
+        val gracePeriodSeconds = 60
+        val gracePeriodMs = gracePeriodSeconds * 1000L
+
+        val disconnectedDurationMs = reconnectTimeMs - disconnectTimeMs
+        val isWithinGracePeriod = disconnectedDurationMs <= gracePeriodMs
+
+        assertTrue("15s disconnect should be within 60s grace period", isWithinGracePeriod)
+        assertEquals(15000L, disconnectedDurationMs)
+    }
+
+    @Test
+    fun testDisconnectGracePeriodExceededThreshold() {
+        val disconnectTimeMs = 1000000L
+        val reconnectTimeMs = 1075000L // 75 seconds later
+        val gracePeriodSeconds = 60
+        val gracePeriodMs = gracePeriodSeconds * 1000L
+
+        val disconnectedDurationMs = reconnectTimeMs - disconnectTimeMs
+        val isWithinGracePeriod = disconnectedDurationMs <= gracePeriodMs
+
+        assertFalse("75s disconnect should exceed 60s grace period", isWithinGracePeriod)
+    }
+
+    @Test
+    fun testReconnectPromptSessionCreation() {
+        val session = ChargeTestSession(
+            startTimeMs = 1000000L,
+            endTimeMs = 1060000L,
+            startBatteryLevel = 30,
+            endBatteryLevel = 35,
+            peakWattage = 30.0f,
+            avgWattage = 25.0f,
+            minVoltageMv = 4000,
+            maxVoltageMv = 4300,
+            peakCurrentMa = 6000,
+            startTempDeciC = 290,
+            maxTempDeciC = 330
+        )
+        val prompt = ReconnectPromptSession(
+            previousSession = session,
+            previousSamples = emptyList(),
+            disconnectedDurationMs = 20000L
+        )
+
+        assertEquals(20000L, prompt.disconnectedDurationMs)
+        assertEquals(30, prompt.previousSession.startBatteryLevel)
+        assertEquals(35, prompt.previousSession.endBatteryLevel)
+        assertEquals(5, prompt.previousSession.batteryGained)
+    }
+
+    @Test
+    fun testLiveTelemetryWithGracePeriod() {
+        val telemetry = LiveChargeTelemetry(
+            isCharging = false,
+            chargePlugType = "Unplugged",
+            currentWattage = 0f,
+            currentMa = -400,
+            voltageMv = 4100,
+            batteryLevelPercent = 50,
+            tempDeciCelsius = 300,
+            isGracePeriodActive = true,
+            gracePeriodRemainingSeconds = 45
+        )
+
+        assertTrue(telemetry.isGracePeriodActive)
+        assertEquals(45, telemetry.gracePeriodRemainingSeconds)
+        assertFalse(telemetry.isCharging)
+    }
+
+    @Test
+    fun testSessionSampleMergingOnResume() {
+        val pausedSamples = listOf(
+            ChargeTelemetrySample(sessionId = "sess-1", timestampMs = 1000L, batteryLevel = 30, voltageMv = 4000, currentMa = 5000, wattage = 20f, tempDeciC = 290),
+            ChargeTelemetrySample(sessionId = "sess-1", timestampMs = 2000L, batteryLevel = 31, voltageMv = 4050, currentMa = 5100, wattage = 21f, tempDeciC = 292)
+        )
+        val newSamples = listOf(
+            ChargeTelemetrySample(sessionId = "sess-2", timestampMs = 15000L, batteryLevel = 31, voltageMv = 4050, currentMa = 5200, wattage = 22f, tempDeciC = 294)
+        )
+
+        val merged = (pausedSamples + newSamples).takeLast(600)
+        assertEquals(3, merged.size)
+        assertEquals(1000L, merged.first().timestampMs)
+        assertEquals(15000L, merged.last().timestampMs)
+    }
+
+    @Test
+    fun testBatteryLevelResolutionAndGained() {
+        // Valid levels
+        val validSession = ChargeTestSession(
+            startTimeMs = 1000L,
+            endTimeMs = 60000L,
+            startBatteryLevel = 45,
+            endBatteryLevel = 78,
+            peakWattage = 25f,
+            avgWattage = 20f,
+            minVoltageMv = 4000,
+            maxVoltageMv = 4300,
+            peakCurrentMa = 5000,
+            startTempDeciC = 280,
+            maxTempDeciC = 340
+        )
+        assertEquals(33, validSession.batteryGained)
+
+        // Negative start fallback sanity
+        val fallbackSession = ChargeTestSession(
+            startTimeMs = 1000L,
+            endTimeMs = 60000L,
+            startBatteryLevel = -1,
+            endBatteryLevel = 50,
+            peakWattage = 25f,
+            avgWattage = 20f,
+            minVoltageMv = 4000,
+            maxVoltageMv = 4300,
+            peakCurrentMa = 5000,
+            startTempDeciC = 280,
+            maxTempDeciC = 340
+        )
+        assertEquals(0, fallbackSession.batteryGained)
+    }
+
+    @Test
+    fun testBatteryLevelNormalizationForCurve() {
+        val samples = listOf(
+            ChargeTelemetrySample(sessionId = "s1", timestampMs = 1000L, batteryLevel = 20, voltageMv = 3900, currentMa = 4000, wattage = 15f, tempDeciC = 280),
+            ChargeTelemetrySample(sessionId = "s1", timestampMs = 2000L, batteryLevel = 50, voltageMv = 4100, currentMa = 4500, wattage = 18f, tempDeciC = 300),
+            ChargeTelemetrySample(sessionId = "s1", timestampMs = 3000L, batteryLevel = 80, voltageMv = 4300, currentMa = 3000, wattage = 12f, tempDeciC = 320)
+        )
+
+        val minLevel = ((samples.minOfOrNull { it.batteryLevel } ?: 0) - 2).coerceAtLeast(0)
+        val maxLevel = ((samples.maxOfOrNull { it.batteryLevel } ?: 100) + 2).coerceAtMost(100)
+        val levelRange = (maxLevel - minLevel).coerceAtLeast(5)
+
+        assertEquals(18, minLevel)
+        assertEquals(82, maxLevel)
+        assertEquals(64, levelRange)
+
+        val normFirst = ((samples[0].batteryLevel - minLevel).toFloat() / levelRange).coerceIn(0f, 1f)
+        val normLast = ((samples[2].batteryLevel - minLevel).toFloat() / levelRange).coerceIn(0f, 1f)
+
+        assertTrue(normFirst in 0.0f..0.1f)
+        assertTrue(normLast in 0.9f..1.0f)
+    }
+}

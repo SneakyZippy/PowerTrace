@@ -1,9 +1,11 @@
 <p align="center">
-  <img src="design/PowerTrace_app_logo_icon.jpg" alt="PowerTrace Logo" width="640" />
+  <img src="design/powerlab_playstore_icon_512.png" alt="PowerLab Logo" width="160" />
 </p>
 
+<h1 align="center">PowerLab: Battery & Charging</h1>
+
 <p align="center">
-  <strong>Android battery telemetry and idle drain diagnostics tool.</strong>
+  <strong>Complete Android battery diagnostics, wakelock isolation, and charging hardware profiler.</strong>
 </p>
 
 <p align="center">
@@ -11,83 +13,62 @@
   <img src="https://img.shields.io/badge/Language-Kotlin-purple.svg" alt="Kotlin" />
   <img src="https://img.shields.io/badge/UI-Jetpack%20Compose-blue.svg" alt="Jetpack Compose" />
   <img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License" />
-  <a href="https://github.com/SneakyZippy/PowerTrace/releases"><img src="https://img.shields.io/github/v/release/SneakyZippy/PowerTrace?include_prereleases&label=Latest%20APK&color=green" alt="Latest APK" /></a>
 </p>
 
 ---
 
 ## Overview
 
-**PowerTrace** helps you find out what is actually draining your device's battery while the screen is off. 
+**PowerLab** is a comprehensive, privacy-first diagnostic tool designed for both sides of your device's power lifecycle:
 
-Standard Android battery menus only show coarse, aggregated percentages. PowerTrace takes snapshots of Android's internal diagnostic sources (`batterystats`, `dumpsys alarm`, `dumpsys power`, and device power profiles) to break down battery loss across custom recording sessions—without requiring root access.
+1. **Charging Telemetry (Power IN):** Benchmark USB cables, power bricks, and wireless chargers in real time. Measure actual wattage, net mA current, voltage, and thermal throttling curves to identify bottlenecked cables and slow chargers.
+2. **Drain Diagnostics (Power OUT):** Isolate what drains your battery while the screen is off. PowerLab computes differential snapshots of Android internal diagnostic sources (`batterystats`, `dumpsys alarm`, `dumpsys power`) to pinpoint wakelock culprits without requiring root.
 
-## Screenshots
-
-| **Continuous Telemetry** | **Culprit & Wakeup Detection** | **Battery Analytics & Insights** |
-| :---: | :---: | :---: |
-| <img src="docs/screenshots/overview_telemetry.png" width="270" alt="Continuous Telemetry & Sleep Efficiency" /> | <img src="docs/screenshots/overview_culprits.png" width="270" alt="Wakeup Culprits & Actionable Tips" /> | <img src="docs/screenshots/analytics_insights.png" width="270" alt="Diagnostic Insights & Wakelock Warnings" /> |
-| Real-time discharge curves, screen-off sleep efficiency & Doze rates | Pinpoint apps holding wakelocks with actionable tips to stop idle drain | Automated diagnostic findings, persistent wakelock alerts & thermal tracking |
-
-## Download
-
-Get the latest build directly from GitHub:
-
-- 📥 **[Download Latest APK (`PowerTrace-debug.apk`)](https://github.com/SneakyZippy/PowerTrace/releases/download/latest/PowerTrace-debug.apk)**
-- Or browse all releases on the **[Releases](https://github.com/SneakyZippy/PowerTrace/releases)** page.
+---
 
 ## Key Features
 
-- **24/7 Continuous Telemetry**: Background monitoring to record periodic snapshots throughout the day and calculate screen-off deep sleep vs. awake ratios.
-- **Session Recording**: Start a dedicated diagnostic session (e.g., overnight or standby) and calculate deltas between baseline and completion.
-- **Wakeup & Culprit Detection**: Pinpoints apps and processes causing excessive alarms, wakeups, partial wakelocks, and background CPU time.
+- **Charging & Hardware Benchmarking**: Real-time charging wattage, net current (mA), voltage, and battery temperature curves. Catalog and compare chargers, USB-C cables, and wireless pads.
+- **Wakelock & Wakeup Culprit Detection**: Pinpoint apps and processes triggering partial wakelocks, kernel wakeups, alarms, and background CPU spikes.
+- **24/7 Continuous Telemetry**: Background monitoring to record periodic snapshots and calculate screen-off deep sleep vs. awake ratios.
+- **Session Benchmarks**: Dedicated recording sessions (overnight standby or fast charging runs) with differential before/after delta calculation.
+- **100% Offline & Private**: Zero external network transmission. All metrics and diagnostic history remain on your local device in a sandboxed SQLite database.
 - **Actionable Remediation**: Built-in prevention tips and direct shortcuts to app settings to restrict rogue background battery drain.
-- **Diagnostic Insights Engine**: Automated findings that flag persistent background workers, monitor cell temperature, and evaluate Doze efficiency.
-- **Power Profile Attribution**: Estimates energy use (mAh) based on your device's OEM power profile hardware coefficients.
-- **Charger & Cable Benchmarking**: Measure real-time charging wattage, voltage, net current, and thermal curves. Catalog power bricks and USB cables separately to compare combinations and spot bottlenecked cables.
-- **Brief Disconnect Grace & Session Resumption**: Accidentally bumping a cable, switching wall sockets, or picking up your phone from a wireless pad for less than a minute won't destroy your session. The app holds a configurable grace window (default 60s) and prompts you to continue the existing benchmark or start a new one, with seamless automatic resumption if uninterrupted.
-- **Qi Wireless & Smart Dock Support**: Accurately tracks wireless charging pads (Qi) and Google Pixel Stand / smart docks, measuring live wattage and heat generation with dedicated direct/cableless presets.
-- **Diagnostics Export**: Export session snapshots as JSON or raw diagnostic checkins for debugging and bug reports.
-- **Configurable Thresholds**: Easily customize minimum session duration, battery gain percentage thresholds, and disconnect grace windows directly in Settings.
-- **Mock Diagnostic Mode**: Includes a built-in mock telemetry source so developers can inspect and test the UI without configuring ADB permissions.
+- **Diagnostics Export**: Export comprehensive HTML and CSV diagnostic reports for offline inspection or sharing.
+- **Mock Diagnostic Mode**: Built-in mock telemetry source allowing complete UI testing without requiring elevated ADB permissions.
+
+---
 
 ## Setup & ADB Permissions
 
-PowerTrace reads protected system stats that are not exposed to normal third-party apps by default. These can be granted once via ADB without rooting:
+PowerLab reads protected diagnostic stats that are not exposed to normal third-party apps by default. These can be granted once via ADB without rooting:
 
 ```bash
-adb shell pm grant com.antigravity.battery android.permission.BATTERY_STATS
-adb shell pm grant com.antigravity.battery android.permission.DUMP
-adb shell pm grant com.antigravity.battery android.permission.PACKAGE_USAGE_STATS
-adb shell pm grant com.antigravity.battery android.permission.INTERACT_ACROSS_USERS
-adb shell appops set com.antigravity.battery GET_USAGE_STATS allow
+adb shell pm grant com.sneakyzippy.powerlab android.permission.BATTERY_STATS
+adb shell pm grant com.sneakyzippy.powerlab android.permission.DUMP
+adb shell pm grant com.sneakyzippy.powerlab android.permission.PACKAGE_USAGE_STATS
+adb shell pm grant com.sneakyzippy.powerlab android.permission.INTERACT_ACROSS_USERS
+adb shell appops set com.sneakyzippy.powerlab GET_USAGE_STATS allow
 ```
 
-*Note: If you don't have ADB available, you can toggle **Mock Diagnostic Mode** in the app settings to test all features with simulated data.*
+*One-Line Setup:*
+```bash
+adb shell "pm grant com.sneakyzippy.powerlab android.permission.BATTERY_STATS; pm grant com.sneakyzippy.powerlab android.permission.DUMP; pm grant com.sneakyzippy.powerlab android.permission.PACKAGE_USAGE_STATS; pm grant com.sneakyzippy.powerlab android.permission.INTERACT_ACROSS_USERS; appops set com.sneakyzippy.powerlab GET_USAGE_STATS allow"
+```
+
+*Note: If you don't have ADB available, you can tap **Proceed (Demo)** or toggle **Mock Diagnostic Mode** in settings to test all features with simulated data.*
+
+---
 
 ## Tech Stack
 
 - **UI**: Jetpack Compose, Material 3
-- **Language**: Kotlin (Coroutines, Flow)
+- **Language**: Kotlin 2.0+ (Coroutines, Flow)
 - **Architecture**: MVVM with unidirectional data flow
 - **Storage**: Room SQLite database
 - **Target SDK**: Android 14 (API 34) / Min SDK 26
 
-## Building
-
-Clone the repository and build with Gradle:
-
-```bash
-git clone https://github.com/SneakyZippy/PowerTrace.git
-cd PowerTrace
-./gradlew assembleDebug
-```
-
-You can then install the debug build directly to a connected device:
-
-```bash
-./gradlew installDebug
-```
+---
 
 ## License
 

@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.antigravity.battery"
+    namespace = "com.sneakyzippy.powerlab"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.antigravity.battery"
+        applicationId = "com.sneakyzippy.powerlab"
         minSdk = 26
         targetSdk = 34
         versionCode = 3
