@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -98,6 +100,7 @@ fun MetricStatTile(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DozeSleepEfficiencyBar(
     deepSleepMs: Long,
@@ -178,10 +181,11 @@ fun DozeSleepEfficiencyBar(
                 )
             }
         }
-        Spacer(modifier = Modifier.height(6.dp))
-        Row(
+        Spacer(modifier = Modifier.height(8.dp))
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             val deepMins = deepSleepMs / 60000
             val deepHours = deepMins / 60
@@ -211,13 +215,17 @@ private fun LegendItem(color: Color, text: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
-                .padding(end = 4.dp)
+                .size(8.dp)
                 .clip(RoundedCornerShape(2.dp))
                 .background(color)
-                .height(8.dp)
-                .fillMaxWidth(0.04f)
         )
-        Text(text = text, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = TextSecondary,
+            maxLines = 1
+        )
     }
 }
 

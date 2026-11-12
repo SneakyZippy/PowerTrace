@@ -61,20 +61,11 @@ fun EditChargeSessionDialog(
     onDismiss: () -> Unit,
     onSave: (ChargeTestSession) -> Unit
 ) {
-    var notes by remember { mutableStateOf(session.notes) }
+    val parsedInitial = remember(session.notes) { SessionConditionTags.parseNotes(session.notes) }
+    var selectedTags by remember { mutableStateOf(parsedInitial.tags) }
+    var customNotes by remember { mutableStateOf(parsedInitial.customText) }
     var selectedBrickId by remember { mutableStateOf(session.brickId) }
     var selectedCableId by remember { mutableStateOf(session.cableId) }
-
-    val quickTags = listOf(
-        "❄️ Cold room",
-        "☀️ Warm room",
-        "📱 Screen off",
-        "🎮 Gaming while charging",
-        "🛡️ Case off",
-        "📦 Thick case",
-        "✈️ Airplane mode",
-        "🔌 Car charger"
-    )
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -106,26 +97,32 @@ fun EditChargeSessionDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Notes Input
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Condition Chips & Optional Custom Note
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Notes & Environmental Conditions",
+                        text = "Test Conditions",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold,
                         color = TextPrimary
                     )
+                    ConditionTagChipsSelector(
+                        selectedTags = selectedTags,
+                        onToggleTag = { tag ->
+                            selectedTags = SessionConditionTags.toggleTag(selectedTags, tag)
+                        }
+                    )
                     OutlinedTextField(
-                        value = notes,
-                        onValueChange = { notes = it },
+                        value = customNotes,
+                        onValueChange = { customNotes = it },
                         placeholder = {
                             Text(
-                                "e.g. Charging in cold room, phone screen was off, gaming during charge...",
+                                "Optional extra note (e.g. desk stand, ambient temp)...",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary.copy(alpha = 0.7f)
                             )
                         },
-                        minLines = 3,
-                        maxLines = 5,
+                        minLines = 1,
+                        maxLines = 3,
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = TextPrimary,
@@ -140,39 +137,6 @@ fun EditChargeSessionDialog(
                         ),
                         shape = RoundedCornerShape(10.dp)
                     )
-
-                    // Quick suggestion chips
-                    Text(
-                        text = "Quick Suggestions",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextSecondary
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        quickTags.forEach { tag ->
-                            SuggestionChip(
-                                onClick = {
-                                    notes = if (notes.isBlank()) {
-                                        tag
-                                    } else if (!notes.contains(tag)) {
-                                        "$notes • $tag"
-                                    } else {
-                                        notes
-                                    }
-                                },
-                                label = { Text(tag, fontSize = 11.sp, color = TextPrimary) },
-                                colors = SuggestionChipDefaults.suggestionChipColors(
-                                    containerColor = DarkSurfaceVariant
-                                ),
-                                border = null,
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                        }
-                    }
                 }
 
                 // Charger Selection
@@ -290,7 +254,7 @@ fun EditChargeSessionDialog(
                     val chosenBrick = powerBricks.find { it.id == selectedBrickId }
                     val chosenCable = cables.find { it.id == selectedCableId }
                     val updated = session.copy(
-                        notes = notes.trim(),
+                        notes = SessionConditionTags.formatNotes(selectedTags, customNotes),
                         brickId = selectedBrickId,
                         cableId = selectedCableId,
                         brickName = chosenBrick?.name ?: "Unspecified Charger",

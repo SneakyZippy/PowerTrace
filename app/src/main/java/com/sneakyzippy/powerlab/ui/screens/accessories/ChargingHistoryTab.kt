@@ -1,6 +1,7 @@
 package com.sneakyzippy.powerlab.ui.screens.accessories
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -22,11 +23,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Cable
+import androidx.compose.material.icons.filled.CompareArrows
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Power
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Thermostat
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -35,6 +39,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,8 +54,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sneakyzippy.powerlab.core.model.ChargeTestSession
+import com.sneakyzippy.powerlab.ui.components.SessionConditionChipsRow
 import com.sneakyzippy.powerlab.ui.theme.AccentBlue
 import com.sneakyzippy.powerlab.ui.theme.CulpritAmber
+import com.sneakyzippy.powerlab.ui.theme.DarkBackground
 import com.sneakyzippy.powerlab.ui.theme.DarkSurface
 import com.sneakyzippy.powerlab.ui.theme.DarkSurfaceVariant
 import com.sneakyzippy.powerlab.ui.theme.GreenPrimary
@@ -63,9 +70,12 @@ import java.util.Locale
 fun ChargingHistoryTab(
     sessions: List<ChargeTestSession>,
     onSelectSession: (ChargeTestSession) -> Unit,
-    onDeleteSession: (ChargeTestSession) -> Unit
+    onDeleteSession: (ChargeTestSession) -> Unit,
+    onCompareSessions: (ChargeTestSession, ChargeTestSession) -> Unit = { _, _ -> }
 ) {
     var selectedFilter by remember { mutableStateOf<String?>(null) }
+    var isCompareMode by remember { mutableStateOf(false) }
+    var selectedCompareIds by remember { mutableStateOf<List<String>>(emptyList()) }
 
     // Chronological order: newest sessions first
     val sortedSessions = remember(sessions) {
@@ -126,15 +136,38 @@ fun ChargingHistoryTab(
                             }
                         }
 
-                        if (avgPeakWattage > 0f) {
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = String.format(Locale.US, "%.1f W", avgPeakWattage),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = GreenPrimary
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (sessions.size >= 2) {
+                                FilterChip(
+                                    selected = isCompareMode,
+                                    onClick = {
+                                        isCompareMode = !isCompareMode
+                                        if (!isCompareMode) selectedCompareIds = emptyList()
+                                    },
+                                    label = { Text("Compare", fontSize = 11.sp) },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.CompareArrows, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        containerColor = DarkSurfaceVariant,
+                                        labelColor = TextSecondary,
+                                        selectedContainerColor = AccentBlue.copy(alpha = 0.2f),
+                                        selectedLabelColor = AccentBlue,
+                                        selectedLeadingIconColor = AccentBlue
+                                    )
                                 )
-                                Text("Avg Peak", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                            }
+
+                            if (avgPeakWattage > 0f) {
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = String.format(Locale.US, "%.1f W", avgPeakWattage),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = GreenPrimary
+                                    )
+                                    Text("Avg Peak", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                                }
                             }
                         }
                     }
@@ -148,6 +181,56 @@ fun ChargingHistoryTab(
                             Text("Total Charge Injected: +$totalGained%", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                             val totalHours = sessions.sumOf { it.durationMs } / 3_600_000.0
                             Text("Time Connected: ${String.format(Locale.US, "%.1f hrs", totalHours)}", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Compare Mode Banner
+        if (isCompareMode) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = AccentBlue.copy(alpha = 0.12f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Select 2 cycles (${selectedCompareIds.size}/2)",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(
+                                onClick = {
+                                    isCompareMode = false
+                                    selectedCompareIds = emptyList()
+                                }
+                            ) {
+                                Text("Cancel", color = TextSecondary, fontSize = 12.sp)
+                            }
+                            Button(
+                                enabled = selectedCompareIds.size == 2,
+                                onClick = {
+                                    val sessionA = sessions.find { it.id == selectedCompareIds[0] }
+                                    val sessionB = sessions.find { it.id == selectedCompareIds[1] }
+                                    if (sessionA != null && sessionB != null) {
+                                        onCompareSessions(sessionA, sessionB)
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Compare", color = DarkBackground, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
                         }
                     }
                 }
@@ -242,10 +325,34 @@ fun ChargingHistoryTab(
                 }
 
                 items(dateSessions, key = { it.id }) { session ->
+                    val compareIndex = selectedCompareIds.indexOf(session.id)
+                    val compareColor = when (compareIndex) {
+                        0 -> GreenPrimary
+                        1 -> AccentBlue
+                        else -> null
+                    }
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onSelectSession(session) },
+                            .then(
+                                if (compareColor != null) {
+                                    Modifier.border(1.5.dp, compareColor, RoundedCornerShape(14.dp))
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .clickable {
+                                if (isCompareMode) {
+                                    selectedCompareIds = when {
+                                        session.id in selectedCompareIds -> selectedCompareIds - session.id
+                                        selectedCompareIds.size < 2 -> selectedCompareIds + session.id
+                                        else -> listOf(selectedCompareIds[1], session.id)
+                                    }
+                                } else {
+                                    onSelectSession(session)
+                                }
+                            },
                         shape = RoundedCornerShape(14.dp),
                         colors = CardDefaults.cardColors(containerColor = DarkSurface)
                     ) {
@@ -294,12 +401,29 @@ fun ChargingHistoryTab(
                                     onClick = { onDeleteSession(session) },
                                     modifier = Modifier.size(28.dp)
                                 ) {
-                                    Icon(
-                                        Icons.Default.Delete,
-                                        contentDescription = "Delete",
-                                        tint = TextSecondary.copy(alpha = 0.5f),
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                    if (compareColor != null) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(22.dp)
+                                                .clip(CircleShape)
+                                                .background(compareColor),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = if (compareIndex == 0) "A" else "B",
+                                                color = DarkBackground,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    } else {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = "Delete",
+                                            tint = TextSecondary.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
                             }
 
@@ -399,13 +523,7 @@ fun ChargingHistoryTab(
 
                             if (session.notes.isNotBlank()) {
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "📝 ${session.notes}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = TextSecondary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                SessionConditionChipsRow(notes = session.notes, compact = true)
                             }
 
                             if (session.isThrottled) {

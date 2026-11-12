@@ -52,6 +52,7 @@ import com.sneakyzippy.powerlab.core.model.ChargeTestSession
 import com.sneakyzippy.powerlab.core.model.PowerBrick
 import com.sneakyzippy.powerlab.ui.components.ChargeCurveChart
 import com.sneakyzippy.powerlab.ui.components.EditChargeSessionDialog
+import com.sneakyzippy.powerlab.ui.components.SessionConditionChipsRow
 import com.sneakyzippy.powerlab.ui.theme.AccentBlue
 import com.sneakyzippy.powerlab.ui.theme.CulpritAmber
 import com.sneakyzippy.powerlab.ui.theme.CulpritRed
@@ -229,12 +230,7 @@ fun ChargeSessionDetailBottomSheet(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     if (currentSession.notes.isNotBlank()) {
-                        Text(
-                            text = currentSession.notes,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextPrimary,
-                            lineHeight = 20.sp
-                        )
+                        SessionConditionChipsRow(notes = currentSession.notes)
                     } else {
                         Row(
                             modifier = Modifier

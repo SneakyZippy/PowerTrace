@@ -63,6 +63,8 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.ExperimentalMaterial3Api
 import com.sneakyzippy.powerlab.core.permission.PermissionState
 import androidx.compose.material3.Icon
@@ -88,6 +90,8 @@ import com.sneakyzippy.powerlab.ui.components.TelemetryGlossary
 import com.sneakyzippy.powerlab.ui.components.TelemetryGuideBottomSheet
 import java.util.Locale
 
+private const val DEFAULT_VISIBLE_CULPRITS = 5
+
 enum class CulpritFilterTab(val label: String) {
     ALL("All"),
     USER("User Apps"),
@@ -111,6 +115,7 @@ fun OverviewScreen(
     val guideSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var culpritFilter by remember { mutableStateOf(CulpritFilterTab.ALL) }
     var searchQuery by remember { mutableStateOf("") }
+    var isCulpritsExpanded by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -474,11 +479,48 @@ fun OverviewScreen(
                     )
                 }
             } else {
-                items(filteredCulprits) { culprit ->
+                val showExpandToggle = searchQuery.isBlank() && filteredCulprits.size > DEFAULT_VISIBLE_CULPRITS
+                val displayedCulprits = if (showExpandToggle && !isCulpritsExpanded) {
+                    filteredCulprits.take(DEFAULT_VISIBLE_CULPRITS)
+                } else {
+                    filteredCulprits
+                }
+
+                items(displayedCulprits, key = { it.primaryPackageName }) { culprit ->
                     CulpritItemRow(
                         culprit = culprit,
                         onClick = { onSelectCulprit(culprit) }
                     )
+                }
+
+                if (showExpandToggle) {
+                    item(key = "culprits_expand_toggle") {
+                        OutlinedButton(
+                            onClick = { isCulpritsExpanded = !isCulpritsExpanded },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(vertical = 10.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isCulpritsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null,
+                                tint = AccentBlue,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isCulpritsExpanded) {
+                                    "Show top $DEFAULT_VISIBLE_CULPRITS"
+                                } else {
+                                    val remaining = filteredCulprits.size - DEFAULT_VISIBLE_CULPRITS
+                                    "Show all ${filteredCulprits.size} apps ($remaining more)"
+                                },
+                                color = AccentBlue,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
                 }
             }
         }

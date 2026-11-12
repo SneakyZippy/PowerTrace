@@ -57,7 +57,9 @@ import com.sneakyzippy.powerlab.core.model.ChargeTestSession
 import com.sneakyzippy.powerlab.core.model.PowerBrick
 import com.sneakyzippy.powerlab.ui.components.AddCableDialog
 import com.sneakyzippy.powerlab.ui.components.AddPowerBrickDialog
+import com.sneakyzippy.powerlab.ui.components.ConditionTagChipsSelector
 import com.sneakyzippy.powerlab.ui.components.DiscardSessionConfirmDialog
+import com.sneakyzippy.powerlab.ui.components.SessionConditionTags
 import com.sneakyzippy.powerlab.ui.components.SessionMetricsSummaryCard
 import com.sneakyzippy.powerlab.ui.theme.AccentBlue
 import com.sneakyzippy.powerlab.ui.theme.CulpritRed
@@ -84,24 +86,15 @@ fun TagAccessoriesBottomSheet(
     val coroutineScope = rememberCoroutineScope()
     var selectedBrickId by remember { mutableStateOf(session.brickId ?: powerBricks.firstOrNull()?.id) }
     var selectedCableId by remember { mutableStateOf(session.cableId ?: cables.firstOrNull()?.id) }
-    var notes by remember { mutableStateOf(session.notes) }
+    val parsedInitial = remember(session.notes) { SessionConditionTags.parseNotes(session.notes) }
+    var selectedTags by remember { mutableStateOf(parsedInitial.tags) }
+    var customNotes by remember { mutableStateOf(parsedInitial.customText) }
 
     var showAddBrickDialog by remember { mutableStateOf(false) }
     var showAddCableDialog by remember { mutableStateOf(false) }
     var showDismissConfirmDialog by remember { mutableStateOf(false) }
 
     val durationMin = (session.durationMs / 60000).coerceAtLeast(1)
-
-    val quickTags = listOf(
-        "❄️ Cold room",
-        "☀️ Warm room",
-        "📱 Screen off",
-        "🎮 Gaming while charging",
-        "🛡️ Case off",
-        "📦 Thick case",
-        "✈️ Airplane mode",
-        "🔌 Car charger"
-    )
 
     fun saveAndDismiss() {
         val chosenBrick = powerBricks.find { it.id == selectedBrickId }
@@ -111,7 +104,7 @@ fun TagAccessoriesBottomSheet(
             selectedCableId,
             chosenBrick?.name ?: "Unspecified Charger",
             chosenCable?.name ?: "Unspecified Cable",
-            notes.trim()
+            SessionConditionTags.formatNotes(selectedTags, customNotes)
         )
     }
 
@@ -311,21 +304,30 @@ fun TagAccessoriesBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Notes Input & Quick Tags
+            // Conditions Chips & Optional Notes Input
             Text(
-                text = "Notes & Environmental Conditions",
-                style = MaterialTheme.typography.bodySmall,
+                text = "Test Conditions",
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = TextPrimary
             )
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            ConditionTagChipsSelector(
+                selectedTags = selectedTags,
+                onToggleTag = { tag ->
+                    selectedTags = SessionConditionTags.toggleTag(selectedTags, tag)
+                }
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             OutlinedTextField(
-                value = notes,
-                onValueChange = { notes = it },
+                value = customNotes,
+                onValueChange = { customNotes = it },
                 placeholder = {
                     Text(
-                        "e.g. Charging in cold room, screen off, gaming, thick case...",
+                        "Optional extra note (e.g. desk stand, 25°C ambient)...",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary.copy(alpha = 0.7f)
                     )
@@ -340,40 +342,10 @@ fun TagAccessoriesBottomSheet(
                     unfocusedLabelColor = TextSecondary,
                     cursorColor = GreenPrimary
                 ),
-                minLines = 2,
-                maxLines = 4,
+                minLines = 1,
+                maxLines = 3,
                 shape = RoundedCornerShape(10.dp)
             )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Quick Tag Chips
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                quickTags.forEach { tag ->
-                    SuggestionChip(
-                        onClick = {
-                            notes = if (notes.isBlank()) {
-                                tag
-                            } else if (!notes.contains(tag)) {
-                                "$notes • $tag"
-                            } else {
-                                notes
-                            }
-                        },
-                        label = { Text(tag, fontSize = 11.sp, color = TextPrimary) },
-                        colors = SuggestionChipDefaults.suggestionChipColors(
-                            containerColor = DarkSurfaceVariant
-                        ),
-                        border = null,
-                        shape = RoundedCornerShape(8.dp)
-                    )
-                }
-            }
 
             Spacer(modifier = Modifier.height(24.dp))
 

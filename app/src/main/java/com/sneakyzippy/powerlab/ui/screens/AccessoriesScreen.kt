@@ -79,6 +79,8 @@ fun AccessoriesScreen(
 
     var selectedSessionForDetail by remember { mutableStateOf<ChargeTestSession?>(null) }
     val detailSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var compareSessionsPair by remember { mutableStateOf<Pair<ChargeTestSession, ChargeTestSession>?>(null) }
+    val compareSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     Box(modifier = Modifier.fillMaxSize().background(DarkBackground)) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -175,7 +177,10 @@ fun AccessoriesScreen(
                 2 -> ChargingHistoryTab(
                     sessions = chargingSessions,
                     onSelectSession = { selectedSessionForDetail = it },
-                    onDeleteSession = onDeleteSession
+                    onDeleteSession = onDeleteSession,
+                    onCompareSessions = { sessionA, sessionB ->
+                        compareSessionsPair = sessionA to sessionB
+                    }
                 )
                 3 -> LeaderboardTab(
                     sessions = chargingSessions,
@@ -202,6 +207,17 @@ fun AccessoriesScreen(
                     selectedSessionForDetail = null
                 },
                 onDismiss = { selectedSessionForDetail = null }
+            )
+        }
+
+        // Compare Two Charging Sessions Bottom Sheet
+        if (compareSessionsPair != null) {
+            CompareChargeSessionsBottomSheet(
+                initialSessionA = compareSessionsPair!!.first,
+                initialSessionB = compareSessionsPair!!.second,
+                sheetState = compareSheetState,
+                getSamplesForSession = getSamplesForSession,
+                onDismiss = { compareSessionsPair = null }
             )
         }
 
