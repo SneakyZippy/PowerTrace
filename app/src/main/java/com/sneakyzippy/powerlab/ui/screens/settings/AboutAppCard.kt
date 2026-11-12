@@ -53,7 +53,7 @@ fun AboutAppCard() {
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Image(
-                painter = painterResource(id = R.drawable.powertrace_banner_logo),
+                painter = painterResource(id = R.drawable.powerlab_banner_logo),
                 contentDescription = "PowerLab",
                 modifier = Modifier
                     .fillMaxWidth()

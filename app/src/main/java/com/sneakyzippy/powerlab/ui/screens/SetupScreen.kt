@@ -99,7 +99,7 @@ fun SetupScreen(
             }
         } else {
             Image(
-                painter = painterResource(id = R.drawable.powertrace_banner_logo),
+                painter = painterResource(id = R.drawable.powerlab_banner_logo),
                 contentDescription = "PowerLab",
                 modifier = Modifier
                     .fillMaxWidth()

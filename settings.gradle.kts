@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "PowerTrace"
+rootProject.name = "PowerLab"
 include(":app")

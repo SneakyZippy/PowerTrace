@@ -20,11 +20,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
           cache: 'gradle'
 
       - name: Grant execute permission for gradlew
@@ -36,13 +36,13 @@ jobs:
       - name: Prepare APK Artifact
         run: |
           mkdir -p release-artifacts
-          cp app/build/outputs/apk/debug/app-debug.apk release-artifacts/PowerTrace-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk release-artifacts/PowerLab-debug.apk
 
       - name: Upload APK to Workflow Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: PowerTrace-debug
-          path: release-artifacts/PowerTrace-debug.apk
+          name: PowerLab-debug
+          path: release-artifacts/PowerLab-debug.apk
           if-no-files-found: error
 
       - name: Publish to GitHub Releases
@@ -50,11 +50,11 @@ jobs:
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}
-          name: ${{ startsWith(github.ref, 'refs/tags/') && format('PowerTrace {0}', github.ref_name) || 'PowerTrace Latest Build' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && format('PowerLab {0}', github.ref_name) || 'PowerLab Latest Build' }}
           body: |
-            ### PowerTrace Release
+            ### PowerLab Release
             Compiled automatically from commit [`${{ github.sha }}`](https://github.com/${{ github.repository }}/commit/${{ github.sha }}).
             
-            **Direct Download:** [PowerTrace-debug.apk](https://github.com/${{ github.repository }}/releases/download/${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}/PowerTrace-debug.apk)
+            **Direct Download:** [PowerLab-debug.apk](https://github.com/${{ github.repository }}/releases/download/${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}/PowerLab-debug.apk)
           prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
-          files: release-artifacts/PowerTrace-debug.apk
+          files: release-artifacts/PowerLab-debug.apk

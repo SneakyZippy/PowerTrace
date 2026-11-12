@@ -132,8 +132,8 @@ fun OverviewScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Image(
-                            painter = painterResource(id = R.drawable.powertrace_app_icon),
-                            contentDescription = "PowerTrace Logo",
+                            painter = painterResource(id = R.drawable.powerlab_app_icon),
+                            contentDescription = "PowerLab Logo",
                             modifier = Modifier
                                 .size(44.dp)
                                 .clip(RoundedCornerShape(10.dp))
