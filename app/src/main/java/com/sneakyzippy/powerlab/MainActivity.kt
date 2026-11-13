@@ -147,7 +147,9 @@ class MainActivity : ComponentActivity() {
                                 onSelectFilter = { viewModel.setTimeFilter(it) },
                                 onSelectCulprit = { viewModel.selectCulprit(it) },
                                 permissionState = permissionState,
-                                onOpenSetup = { viewModel.setTab(AppNavTab.SETUP) }
+                                onOpenSetup = { viewModel.setTab(AppNavTab.SETUP) },
+                                liveTelemetry = liveTelemetry,
+                                onOpenLiveTest = { viewModel.setTab(AppNavTab.ACCESSORIES) }
                             )
                             AppNavTab.ACCESSORIES -> AccessoriesScreen(
                                 liveTelemetry = liveTelemetry,

@@ -24,6 +24,7 @@
         <intent>
             <action android:name="android.intent.action.MAIN" />
         </intent>
+        <package android:name="moe.shizuku.privileged.api" />
     </queries>
 
     <application

@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.sneakyzippy.powerlab.core.engine.TimeWindowFilter
 import com.sneakyzippy.powerlab.core.engine.TimelineViewData
 import com.sneakyzippy.powerlab.core.model.CulpritApp
+import com.sneakyzippy.powerlab.core.model.LiveChargeTelemetry
 import com.sneakyzippy.powerlab.ui.components.BatteryTimelineChart
 import com.sneakyzippy.powerlab.ui.components.DozeSleepEfficiencyBar
 import com.sneakyzippy.powerlab.ui.components.MetricStatTile
@@ -58,6 +59,7 @@ import com.sneakyzippy.powerlab.R
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
@@ -108,7 +110,9 @@ fun OverviewScreen(
     onSelectFilter: (TimeWindowFilter) -> Unit,
     onSelectCulprit: (CulpritApp) -> Unit,
     permissionState: PermissionState? = null,
-    onOpenSetup: () -> Unit = {}
+    onOpenSetup: () -> Unit = {},
+    liveTelemetry: LiveChargeTelemetry? = null,
+    onOpenLiveTest: () -> Unit = {}
 ) {
     var activeExplanation by remember { mutableStateOf<MetricExplanation?>(null) }
     var isGuideOpen by remember { mutableStateOf(false) }
@@ -196,6 +200,61 @@ fun OverviewScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+                        }
+                    }
+                }
+            }
+
+            if (liveTelemetry != null && (liveTelemetry.isCharging || liveTelemetry.isGracePeriodActive)) {
+                item {
+                    val isPaused = !liveTelemetry.isCharging && liveTelemetry.isGracePeriodActive
+                    val accent = if (isPaused) CulpritAmber else GreenPrimary
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpenLiveTest() },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = accent.copy(alpha = 0.14f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = null,
+                                tint = accent,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (isPaused) {
+                                        "Charge Test Paused (${liveTelemetry.gracePeriodRemainingSeconds}s)"
+                                    } else {
+                                        String.format(Locale.US, "Charging at %.1f W", liveTelemetry.currentWattage)
+                                    },
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = accent
+                                )
+                                Text(
+                                    text = if (isPaused) {
+                                        "Reconnect charger or tap to manage Live Test"
+                                    } else {
+                                        "${liveTelemetry.chargePlugType.uppercase()} • Tap to open Live Test"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = "Open Live Test",
+                                tint = TextSecondary
+                            )
                         }
                     }
                 }

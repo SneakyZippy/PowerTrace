@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SecondaryTabRow
+import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -67,7 +67,7 @@ fun AccessoriesScreen(
     }
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Live HUD", "Catalog & Combos", "History", "Leaderboard")
+    val tabs = listOf("Live Test", "Catalog & Combos", "History", "Leaderboard")
 
     var showAddBrickDialog by remember { mutableStateOf(false) }
     var showAddCableDialog by remember { mutableStateOf(false) }
@@ -104,8 +104,9 @@ fun AccessoriesScreen(
             }
 
             // Tabs
-            SecondaryTabRow(
+            SecondaryScrollableTabRow(
                 selectedTabIndex = selectedTabIndex,
+                edgePadding = 12.dp,
                 containerColor = DarkSurface,
                 contentColor = GreenPrimary
             ) {
@@ -116,6 +117,8 @@ fun AccessoriesScreen(
                         text = {
                             Text(
                                 text = title,
+                                maxLines = 1,
+                                softWrap = false,
                                 fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Normal,
                                 color = if (selectedTabIndex == index) GreenPrimary else TextSecondary
                             )

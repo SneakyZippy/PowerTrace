@@ -76,7 +76,7 @@ fun LiveChargeHudTab(
     onFinalizeGraceNow: () -> Unit = {}
 ) {
     val durationSec = (telemetry.sessionDurationMs / 1000L)
-    val durationFormatted = String.format("%02d:%02d", durationSec / 60, durationSec % 60)
+    val durationFormatted = String.format(Locale.US, "%02d:%02d", durationSec / 60, durationSec % 60)
 
     val gaugeColor by animateColorAsState(
         targetValue = when {
@@ -161,58 +161,12 @@ fun LiveChargeHudTab(
             }
         }
 
-        // Giant Wattage Card
+        // Wattage Gauge / Standby Card
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = DarkSurface)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = if (telemetry.isCharging) "LIVE CHARGING POWER" else "DISCONNECTED",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = TextSecondary,
-                        letterSpacing = 1.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(
-                        text = if (telemetry.isCharging) String.format(Locale.US, "%.1f", telemetry.currentWattage) else "0.0",
-                        fontSize = 64.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
-                        color = gaugeColor
-                    )
-
-                    Text(
-                        text = "WATTS",
-                        fontSize = 18.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                        color = gaugeColor
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = when {
-                            !telemetry.isCharging -> "Connect charger & cable to begin live test"
-                            telemetry.currentWattage >= 30f -> "Ultra Fast Charging (USB-PD / SuperCharge)"
-                            telemetry.currentWattage >= 18f -> "Fast Charging"
-                            telemetry.currentWattage >= 10f -> "Standard Charging"
-                            telemetry.currentWattage > 0f -> "Trickle / Battery Near Full"
-                            else -> "Plugged in (low input / maintaining)"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
-                    )
-                }
-            }
+            WattageGaugeCard(
+                telemetry = telemetry,
+                gaugeColor = gaugeColor
+            )
         }
 
         // Test Setup (Charger & Cable) Selector Card

@@ -108,7 +108,8 @@ fun LeaderboardTab(
                             text = topBrickName,
                             style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary,
-                            maxLines = 1
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -135,7 +136,8 @@ fun LeaderboardTab(
                             text = topCableName,
                             style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary,
-                            maxLines = 1
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }

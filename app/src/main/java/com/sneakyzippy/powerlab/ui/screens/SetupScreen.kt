@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sneakyzippy.powerlab.core.permission.PermissionState
 import com.sneakyzippy.powerlab.core.permission.PermissionStatus
+import com.sneakyzippy.powerlab.ui.components.ShizukuGrantCard
 import com.sneakyzippy.powerlab.ui.theme.AccentBlue
 import com.sneakyzippy.powerlab.ui.theme.CulpritRed
 import com.sneakyzippy.powerlab.ui.theme.DarkBackground
@@ -138,7 +139,14 @@ fun SetupScreen(
             }
 
             item {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
+
+                ShizukuGrantCard(
+                    allPermissionsGranted = permissionState.areAllRequiredGranted,
+                    onPermissionsGranted = onRefreshPermissions
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // One-Line ADB Command Card
                 Card(

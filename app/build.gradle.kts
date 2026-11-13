@@ -44,6 +44,7 @@ android {
 
     buildFeatures {
         compose = true
+        aidl = true
     }
 
     testOptions {
@@ -86,6 +87,11 @@ dependencies {
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
+
+    // Shizuku (optional on-device ADB permission granting without PC)
+    val shizukuVersion = "13.1.5"
+    implementation("dev.rikka.shizuku:api:$shizukuVersion")
+    implementation("dev.rikka.shizuku:provider:$shizukuVersion")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
